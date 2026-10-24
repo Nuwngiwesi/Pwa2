@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#1a0713">
+<title>Lynko Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@1,9..144,600&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{--rose:#ff5c8a;--peach:#ffb38a;--lilac:#b28cff;--txt:#fff0f5;--mut:#d6a6ba;--line:rgba(255,255,255,.12);--panel:#240b1d;--ok:#4ade80;--bad:#ff7a7a;--blue:#2f9bff}
+*{box-sizing:border-box;margin:0;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
+body{font-family:'DM Sans',system-ui,sans-serif;color:var(--txt);min-height:100dvh;background:radial-gradient(900px 700px at 10% 0%,#4a0d33,transparent 60%),#1a0713;background-attachment:fixed}
+button{font:inherit;cursor:pointer;border:0;color:inherit;background:none}
+input,textarea{font:16px 'DM Sans',sans-serif;color:var(--txt);background:rgba(255,255,255,.08);border:1px solid var(--line);border-radius:14px;padding:12px 14px;outline:0;width:100%}
+input:focus,textarea:focus{border-color:var(--rose)}
+::placeholder{color:#b98aa0}
+.lg{white-space:nowrap;font:italic 600 26px 'Fraunces',serif;background:linear-gradient(120deg,var(--peach),var(--rose) 55%,var(--lilac));-webkit-background-clip:text;background-clip:text;color:transparent}
+.btn{padding:12px 18px;border-radius:14px;background:rgba(255,255,255,.1);font-weight:700}
+.btn.p{background:linear-gradient(135deg,var(--rose),#c14bff);box-shadow:0 8px 22px rgba(255,92,138,.3)}
+.btn.d{background:rgba(255,122,122,.16);color:var(--bad)}
+.btn:disabled{opacity:.55}
+.btn.s{padding:7px 12px;font-size:13px;border-radius:10px}
+/* login */
+#login{min-height:100dvh;display:grid;place-items:center;padding:20px}
+.card{width:100%;max-width:380px;padding:30px 26px;border-radius:26px;background:rgba(255,255,255,.07);border:1px solid var(--line);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px)}
+.card .lg{display:block;text-align:center;font-size:40px}.card p{text-align:center;color:var(--mut);margin:4px 0 22px;font-size:14px}
+.card input{margin-bottom:12px}.card .btn{width:100%}
+#lerr{min-height:20px;margin-top:12px;text-align:center;color:#ffb3c6;font-size:14px}
+/* app */
+.top{position:sticky;top:0;z-index:5;background:rgba(26,7,19,.88);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--line);padding:calc(10px + env(safe-area-inset-top)) 16px 0}
+.row1{display:flex;align-items:center;gap:10px;max-width:980px;margin:0 auto}.row1 .lg{flex:1}.row1 small{color:var(--mut)}
+.tabs{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;max-width:980px;margin:8px auto 0;padding-bottom:10px}
+.tabs button{flex:none;padding:8px 16px;border-radius:99px;background:rgba(255,255,255,.08);color:var(--mut);font-size:14px;font-weight:500;border:1px solid transparent}
+.tabs button.on{background:rgba(255,92,138,.22);color:var(--txt);border-color:var(--rose)}
+.tabs em{font-style:normal;background:var(--bad);color:#2a0618;border-radius:99px;font-size:11px;font-weight:700;padding:1px 6px;margin-left:6px}
+main{max-width:980px;margin:0 auto;padding:16px 16px calc(40px + env(safe-area-inset-bottom))}
+h2{font-size:13px;letter-spacing:.6px;text-transform:uppercase;color:var(--mut);margin:22px 0 10px}
+h2:first-child{margin-top:4px}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+@media(min-width:720px){.grid{grid-template-columns:repeat(4,1fr)}}
+.stat{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:14px 16px}
+.stat small{display:block;color:var(--mut);font-size:12.5px}.stat b{display:block;font-size:28px;margin-top:2px;font-variant-numeric:tabular-nums}
+.stat i{font-style:normal;font-size:12px;color:var(--mut)}.stat.alert b{color:var(--bad)}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:14px 16px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.chips button{padding:6px 13px;border-radius:99px;background:rgba(255,255,255,.08);font-size:13px;color:var(--mut);border:1px solid transparent}
+.chips button.on{background:rgba(255,92,138,.22);color:var(--txt);border-color:var(--rose)}
+.chart{position:relative;height:190px;display:flex;align-items:flex-end;gap:6px;padding-top:22px;border-bottom:1px solid var(--line)}
+.chart .col{flex:1;height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;min-width:0;position:relative;cursor:default}
+.chart .bar{width:100%;max-width:34px;border-radius:5px 5px 0 0;background:linear-gradient(180deg,var(--rose),#c14bff);min-height:2px}
+.chart .col:hover .bar,.chart .col.on .bar{filter:brightness(1.25)}
+.chart .v{position:absolute;top:0;font-size:11px;color:var(--txt);text-shadow:0 1px 3px #000;font-variant-numeric:tabular-nums}
+.axis{display:flex;gap:6px;margin-top:6px}.axis span{flex:1;text-align:center;font-size:10.5px;color:var(--mut);min-width:0;overflow:hidden}
+.tip{position:absolute;z-index:3;pointer-events:none;background:#000d;border:1px solid var(--line);border-radius:10px;padding:6px 10px;font-size:12.5px;white-space:nowrap;transform:translate(-50%,-100%)}
+details{margin-top:12px;color:var(--mut);font-size:13px}summary{cursor:pointer}
+table{width:100%;border-collapse:collapse;margin-top:8px;font-variant-numeric:tabular-nums}th,td{text-align:right;padding:5px 6px;border-bottom:1px solid var(--line)}th:first-child,td:first-child{text-align:left}
+.kv{display:grid;grid-template-columns:1fr auto;gap:0}.kv>*{padding:10px 0;border-bottom:1px solid var(--line)}.kv>:nth-last-child(-n+2){border-bottom:0}.kv span{color:var(--mut)}.kv b{text-align:right;font-weight:500}
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;background:var(--ok)}.dot.off{background:#7a5a6c}.dot.bad{background:var(--bad)}
+.item{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px 14px;margin-bottom:10px}
+.item .hd{display:flex;gap:8px;align-items:center;justify-content:space-between;color:var(--mut);font-size:12.5px;margin-bottom:6px}
+.item .tx{white-space:pre-wrap;word-break:break-word;line-height:1.45}
+.pill{font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;background:rgba(255,255,255,.12);color:var(--txt)}
+.pill.server{background:rgba(255,122,122,.25)}.pill.client{background:rgba(178,140,255,.28)}.pill.process{background:rgba(255,179,138,.28)}
+.empty{text-align:center;color:var(--mut);padding:36px 10px;line-height:1.6}
+pre{white-space:pre-wrap;word-break:break-all;font:12px/1.5 ui-monospace,monospace;color:var(--mut);margin-top:8px;max-height:220px;overflow:auto}
+.cnt{display:flex;justify-content:space-between;color:var(--mut);font-size:12.5px;margin:6px 2px 0}
+.usr{display:flex;gap:12px;align-items:center;padding:10px 4px;border-bottom:1px solid var(--line)}
+.usr .a{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;font-weight:700;color:#3a0a24;background:linear-gradient(135deg,var(--peach),var(--rose) 60%,var(--lilac));flex:none}
+.usr div{min-width:0;flex:1}.usr b,.usr small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.usr small{color:var(--mut);font-size:12.5px}
+.toast{position:fixed;left:50%;bottom:80px;transform:translateX(-50%);z-index:99;background:#000d;padding:10px 18px;border-radius:99px;font-size:14px}
+</style>
+</head>
+<body>
+<section id="login" hidden>
+  <form class="card" id="lf" autocomplete="on">
+    <b class="lg">Lynko Admin</b><p>Sign in to manage Lynko</p>
+    <input id="lu" placeholder="Username" autocomplete="username" autocapitalize="none" spellcheck="false">
+    <input id="lp" type="password" placeholder="Password" autocomplete="current-password">
+    <button class="btn p" id="lb" type="submit">Sign in</button>
+    <div id="lerr"></div>
+  </form>
+</section>
+
+<div id="app" hidden>
+  <div class="top">
+    <div class="row1"><b class="lg">Lynko Admin</b><small id="upd"></small><button class="btn s" id="out">Log out</button></div>
+    <div class="tabs" id="tabs">
+      <button data-t="ov" class="on">Overview</button><button data-t="of">Official</button><button data-t="er">Errors<em id="ebadge" hidden></em></button><button data-t="us">Users</button>
+    </div>
+  </div>
+  <main>
+    <!-- overview -->
+    <section id="t-ov">
+      <h2>Right now</h2>
+      <div class="grid" id="cards"></div>
+      <h2>Last 14 days</h2>
+      <div class="box">
+        <div class="chips" id="mchips"></div>
+        <div class="chart" id="chart" role="img" aria-label="Daily bar chart"></div>
+        <div class="axis" id="axis"></div>
+        <details><summary>Show as table</summary><table id="tbl"></table></details>
+      </div>
+      <h2>System</h2>
+      <div class="box"><div class="kv" id="sys"></div></div>
+    </section>
+    <!-- official -->
+    <section id="t-of" hidden>
+      <h2>Post to Lynko Official</h2>
+      <div class="box">
+        <textarea id="otx" rows="4" maxlength="1500" placeholder="Write an update — every account sees it in the verified “Lynko Official” chat"></textarea>
+        <div class="cnt"><span id="ocnt">0 / 1500</span><span>Links are clickable</span></div>
+        <button class="btn p" id="osend" style="margin-top:10px;width:100%">Send to everyone</button>
+      </div>
+      <h2>Sent messages</h2>
+      <div id="olist"></div>
+    </section>
+    <!-- errors -->
+    <section id="t-er" hidden>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px"><h2 style="margin:0">Errors (grouped)</h2><button class="btn d s" id="eclr">Clear all</button></div>
+      <div id="elist"></div>
+    </section>
+    <!-- users -->
+    <section id="t-us" hidden>
+      <h2>Find accounts</h2>
+      <input id="uq" placeholder="Search username or ID" autocomplete="off" autocapitalize="none">
+      <div class="box" id="ulist" style="margin-top:12px;padding:6px 14px"></div>
+    </section>
+  </main>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const toast=t=>{const d=document.createElement('div');d.className='toast';d.textContent=t;document.body.appendChild(d);setTimeout(()=>d.remove(),2400)};
+const n0=n=>Number(n||0).toLocaleString();
+const ago=t=>{const s=Math.max(0,(Date.now()-new Date(t))/1000);return s<60?'just now':s<3600?Math.floor(s/60)+' min ago':s<86400?Math.floor(s/3600)+' h ago':Math.floor(s/86400)+' d ago'};
+const el=(tag,cls,txt)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(txt!=null)e.textContent=txt;return e};   // textContent only: error text comes from browsers and can't be trusted
+async function api(url,method='GET',body){
+  const r=await fetch(url,{method,headers:{'Content-Type':'application/json','X-Admin':'1'},body:body?JSON.stringify(body):undefined});
+  const d=await r.json().catch(()=>({}));
+  if(r.status==401&&url!='/admin/api/login'){showLogin();throw new Error('Login required')}
+  if(!r.ok)throw new Error(d.error||'Error');return d}
+
+// ── login ──
+function showLogin(){$('app').hidden=true;$('login').hidden=false;clearInterval(timer)}
+$('lf').onsubmit=async e=>{e.preventDefault();$('lb').disabled=true;$('lerr').textContent='';
+  try{await api('/admin/api/login','POST',{username:$('lu').value.trim(),password:$('lp').value});$('lp').value='';start()}
+  catch(x){$('lerr').textContent=x.message}$('lb').disabled=false};
+$('out').onclick=async()=>{await api('/admin/api/logout','POST').catch(()=>{});showLogin()};
+
+// ── tabs ──
+let tab='ov',timer;
+document.querySelectorAll('#tabs button').forEach(b=>b.onclick=()=>{tab=b.dataset.t;
+  document.querySelectorAll('#tabs button').forEach(x=>x.classList.toggle('on',x==b));
+  ['ov','of','er','us'].forEach(t=>$('t-'+t).hidden=t!=tab);load()});
+const load=()=>({ov:overview,of:official,er:errors,us:users}[tab])().catch(e=>{if(e.message!='Login required')toast(e.message)});
+
+// ── overview ──
+const METRICS=[['req','Requests'],['msg','Messages'],['reg','New accounts'],['login','Logins'],['err','Errors']];
+let ser=[],metric='req';
+function card(l,v,sub,alert){const d=el('div','stat'+(alert?' alert':''));d.append(el('small','',l),el('b','',n0(v)));if(sub)d.append(el('i','',sub));return d}
+async function overview(){
+  const d=await api('/admin/api/overview');ser=d.series;
+  const c=$('cards');c.replaceChildren(
+    card('Total accounts',d.users,'+'+n0(d.newToday)+' today · +'+n0(d.new7)+' this week'),
+    card('Online now',d.online,'active in last 5 min'),
+    card('Active 24 h',d.dau,n0(d.wau)+' in 7 days'),
+    card('Errors 24 h',d.err24,n0(d.errAll)+' stored',d.err24>0),
+    card('Live messages',d.msgs,'auto-deleted after 24 h'),
+    card('Live statuses',d.statuses),
+    card('Official posts',d.official),
+    card('Requests today',ser[ser.length-1].req,n0(ser[ser.length-1].msg)+' messages today'));
+  $('ebadge').hidden=!d.err24;$('ebadge').textContent=d.err24>99?'99+':d.err24;
+  const s=d.sys,up=s.uptime,kv=[['Database',`<d>${s.ping} ms`],['Media storage',s.storage?'<d>'+s.storage:'<x>Not configured'],['Pusher (realtime)',s.pusher?'<d>Configured':'<x>Missing keys'],
+    ['Uptime',up>86400?Math.floor(up/86400)+' d '+Math.floor(up%86400/3600)+' h':up>3600?Math.floor(up/3600)+' h '+Math.floor(up%3600/60)+' m':Math.floor(up/60)+' min'],
+    ['Memory',(s.rss/1048576).toFixed(0)+' MB'],['Node',s.node],['Environment',s.env],['Stats time zone','UTC'+(s.tz>=0?'+':'−')+Math.floor(Math.abs(s.tz)/60)+(s.tz%60?':'+String(Math.abs(s.tz)%60).padStart(2,'0'):'')]];
+  $('sys').replaceChildren(...kv.flatMap(([k,v])=>{const b=el('b');const m=/^<([dx])>(.*)$/.exec(v);
+    if(m){const i=el('i','dot'+(m[1]=='x'?' bad':''));b.append(i,document.createTextNode(m[2]))}else b.textContent=v;return [el('span','',k),b]}));
+  $('upd').textContent='Updated '+new Date().toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
+  drawChart();
+}
+$('mchips').replaceChildren(...METRICS.map(([k,l])=>{const b=el('button',k==metric?'on':'',l);b.onclick=()=>{metric=k;[...$('mchips').children].forEach(x=>x.classList.toggle('on',x==b));drawChart()};return b}));
+function drawChart(){
+  const ch=$('chart'),label=METRICS.find(m=>m[0]==metric)[1],max=Math.max(1,...ser.map(s=>s[metric]));
+  ch.replaceChildren();$('axis').replaceChildren();
+  ser.forEach((s,i)=>{const col=el('div','col'),bar=el('div','bar'),v=s[metric];bar.style.height=(v/max*100)+'%';
+    col.append(bar);
+    const show=()=>{ch.querySelector('.tip')?.remove();const t=el('div','tip',s.d+' · '+n0(v)+' '+label.toLowerCase());t.style.left=Math.min(Math.max(col.offsetLeft+col.offsetWidth/2,60),ch.clientWidth-60)+'px';t.style.top='14px';ch.append(t)};
+    col.onmouseenter=col.onclick=show;col.onmouseleave=()=>ch.querySelector('.tip')?.remove();
+    if(i==ser.length-1||v==max&&v>0){col.append(el('span','v',n0(v)))}
+    ch.append(col);$('axis').append(el('span','',s.d.slice(8)))});
+  const t=$('tbl'),head=el('tr');head.append(el('th','','Day'),...METRICS.map(m=>el('th','',m[1])));
+  t.replaceChildren(head,...ser.slice().reverse().map(s=>{const r=el('tr');r.append(el('td','',s.d.slice(5)),...METRICS.map(m=>el('td','',n0(s[m[0]]))));return r}))}
+
+// ── official ──
+$('otx').oninput=e=>$('ocnt').textContent=e.target.value.length+' / 1500';
+$('osend').onclick=async()=>{const t=$('otx').value.trim();if(!t)return toast('Write a message first');
+  if(!confirm('Send this to ALL accounts?'))return;$('osend').disabled=true;
+  try{await api('/admin/api/official','POST',{text:t});$('otx').value='';$('ocnt').textContent='0 / 1500';toast('Sent ✓');official()}catch(e){toast(e.message)}$('osend').disabled=false};
+async function official(){
+  const l=await api('/admin/api/official'),box=$('olist');
+  if(!l.length)return box.replaceChildren(el('div','empty','No messages yet.'));
+  box.replaceChildren(...l.map(m=>{const d=el('div','item'),h=el('div','hd'),b=el('button','btn d s','Delete');
+    h.append(el('span','',new Date(m.ts).toLocaleString()),b);d.append(h,el('div','tx',m.t));
+    b.onclick=async()=>{if(!confirm('Delete this message for everyone?'))return;try{await api('/admin/api/official/'+m.id,'DELETE');d.remove();toast('Deleted')}catch(e){toast(e.message)}};return d}))}
+
+// ── errors ──
+async function errors(){
+  const l=await api('/admin/api/errors'),box=$('elist');
+  $('ebadge').hidden=true;$('eclr').hidden=!l.length;
+  if(!l.length)return box.replaceChildren(el('div','empty','No errors 🎉\nEverything is running clean.'));
+  box.replaceChildren(...l.map(x=>{const d=el('div','item'),h=el('div','hd'),left=el('span');
+    left.append(el('span','pill '+x.src,x.src),document.createTextNode('  ×'+n0(x.n)+' · last '+ago(x.last)));
+    const b=el('button','btn s','Dismiss');h.append(left,b);d.append(h,el('div','tx',x.msg));
+    if(x.path)d.append(el('div','hd',x.path));
+    if(x.stack){const t=el('details'),s=el('summary','','Stack trace');t.append(s,el('pre','',x.stack));d.append(t)}
+    b.onclick=async()=>{try{await api('/admin/api/errors/clear','POST',{src:x.src,msg:x.msg,path:x.path||''});d.remove()}catch(e){toast(e.message)}};return d}))}
+$('eclr').onclick=async()=>{if(!confirm('Clear the whole error log?'))return;try{await api('/admin/api/errors/clear','POST',{});errors()}catch(e){toast(e.message)}};
+
+// ── users ──
+let uqT;$('uq').oninput=()=>{clearTimeout(uqT);uqT=setTimeout(()=>users().catch(()=>{}),250)};
+async function users(){
+  const l=await api('/admin/api/users?q='+encodeURIComponent($('uq').value.trim())),box=$('ulist');
+  if(!l.length)return box.replaceChildren(el('div','empty','No accounts found.'));
+  box.replaceChildren(...l.map(u=>{const r=el('div','usr'),a=el('div','a',(u.username||'?')[0].toUpperCase()),m=el('div'),on=u.lastSeen&&Date.now()-new Date(u.lastSeen)<3e5;
+    const b=el('b','',u.username),s=el('small','','ID '+u.id+' · joined '+new Date(u.createdAt).toLocaleDateString()),
+      s2=el('small','',u.lastSeen?'last seen '+ago(u.lastSeen):'never seen since update');
+    m.append(b,s);r.append(a,m);const st=el('small');st.append(el('i','dot'+(on?'':' off')),document.createTextNode(on?'online':ago(u.lastSeen||u.createdAt)));
+    r.append(st);return r}))}
+
+// ── start ──
+function start(){$('login').hidden=true;$('app').hidden=false;load();clearInterval(timer);timer=setInterval(()=>{if(!document.hidden&&(tab=='ov'||tab=='er'))load()},30000)}
+fetch('/admin/api/session').then(r=>r.status==404?(document.body.textContent='Not found'):r.json()).then(d=>{if(!d)return;d.ok?start():showLogin()}).catch(showLogin);
+</script>
+</body>
+</html>
