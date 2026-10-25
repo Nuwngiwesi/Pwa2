@@ -71,6 +71,10 @@ async function pushSub() {
   try {
     const reg = await navigator.serviceWorker.ready;
     let sub = await reg.pushManager.getSubscription();
+    if (sub) {   // made with an older / different VAPID key (e.g. keys were regenerated) -> the push service rejects every alert: start fresh
+      const cur = sub.options && sub.options.applicationServerKey, want = b64u(cfg.vapid);
+      if (cur && (cur.byteLength != want.length || new Uint8Array(cur).some((v, i) => v != want[i]))) { await sub.unsubscribe().catch(() => {}); sub = null; }
+    }
     if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64u(cfg.vapid) });
     await api('/api/push/subscribe', 'POST', { sub: sub.toJSON() });
   } catch (e) { console.warn('push', e.message) }
@@ -81,6 +85,7 @@ async function notifOn() {
   const r = await Notification.requestPermission();
   if (r != 'granted') { toast('Notifications are blocked — allow them in browser settings'); return nbar() }
   await pushSub(); nbar(); toast('Notifications on ♥');
+  try { await api('/api/push/test', 'POST', {}) } catch (e) { toast('Alerts could not be sent: ' + e.message) }   // you should see a test alert in a moment
 }
 function nbar() {
   const b = $('nbar'); if (!b) return;
@@ -157,7 +162,7 @@ const callStatus = t => { const e = $('cst'); if (e) e.textContent = t };
 function pcMake(stream) {
   return ice().then(servers => {
     return relayAvail().then(rel => {
-    const pc = new RTCPeerConnection({ iceServers: servers, iceTransportPolicy: relayGet() && rel ? 'relay' : 'all' });
+    const pc = new RTCPeerConnection({ iceServers: servers, iceTransportPolicy: relayGet() && rel ? 'relay' : 'all', bundlePolicy: 'max-bundle', rtcpMuxPolicy: 'require' });   // one transport = smaller setup, fewer candidates
     stream.getTracks().forEach(t => pc.addTrack(t, stream));
     pc.ontrack = e => { const a = $('rau'); if (a) { a.srcObject = e.streams[0]; a.play().catch(() => {}) } };
     pc.onconnectionstatechange = () => {
@@ -224,10 +229,12 @@ async function callAccept() {
 function callReject() { if (Call.cid) post('/api/call', { type: 'reject', cid: Call.cid }).catch(() => {}); callDone('') }
 function callEnd() { callDone('', true) }
 async function callEvent(d) {
-  if (d.t == 'offer') return callIncoming(d);
+  if (d.t == 'offer') return d.sdp ? callIncoming(d) : callPending();   // big setups are not in the realtime event: fetch the ringing call
   if (d.cid != Call.cid) return;
   if (d.t == 'answer' && Call.pc && Call.out) {
-    try { await Call.pc.setRemoteDescription(JSON.parse(await openSdp(Call.peer, Call.cid, 'answer', d.sdp))); Call.st = 'connecting'; callStatus('Connecting…'); ringStop(); clearTimeout(Call.to); Call.to = setTimeout(() => { if (Call.st == 'connecting') callDone('Couldn’t connect', true) }, 20000) }
+    try {
+      if (!d.sdp) for (let i = 0; i < 5 && !d.sdp; i++) { d.sdp = (await api('/api/call/' + Call.cid + '/answer')).sdp; if (!d.sdp) await new Promise(r => setTimeout(r, 400)) }
+      await Call.pc.setRemoteDescription(JSON.parse(await openSdp(Call.peer, Call.cid, 'answer', d.sdp))); Call.st = 'connecting'; callStatus('Connecting…'); ringStop(); clearTimeout(Call.to); Call.to = setTimeout(() => { if (Call.st == 'connecting') callDone('Couldn’t connect', true) }, 20000) }
     catch { callDone('Couldn’t connect', true) }
   } else if (d.t == 'reject') callDone(nm(Call.peer) + ' declined');
   else if (d.t == 'end') callDone(Call.st == 'active' ? 'Call ended' : Call.st == 'incoming' ? 'Missed call' : 'Call ended');
