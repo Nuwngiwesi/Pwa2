@@ -455,7 +455,37 @@ app.get('/api/calls', auth, async (req, res) => {
 });
 
 // ── Lynko AI: streams a Groq reply as plain text (history lives on the phone, nothing is stored here) ──
-const AI_SYS = () => `You are Lynko AI, a warm, quick and helpful assistant inside the Lynko chat app. Reply in the same language the user writes in (Sinhala, Singlish, English, Tamil...). Keep answers short and chat-friendly, plain text, minimal markdown. Never claim to be Meta AI, ChatGPT or any other brand. Today is ${new Date().toDateString()}.`;
+const APP_GUIDE = `
+ABOUT THE LYNKO CHAT APP (you live inside it — explain any part of it when asked):
+- Lynko is a private chat app (PWA: works in the browser and can be installed on the home screen: Android browser menu ⋮ → "Install app"; iPhone Safari Share → "Add to Home Screen").
+- Accounts: you register with your phone number (Sri Lanka numbers like 07xxxxxxxx work), a name and a password. Every account also gets an 8-digit ID (Settings → "My ID", or Profile; tap it to copy).
+- Add contact: menu (⋮) → "Add contact", then type their phone number or 8-digit ID. Once added, both people see each other.
+- Bottom tabs: Chats, Status, Calls, Wallpaper, You (profile/settings). Chat list has a search box and filters: All, Unread, Locked 🔒.
+- Messages: text, photos, videos and voice messages (hold the mic button to record). Long-press / tap a message for options: react with an emoji (❤️ 😍 🥰 😘 😂 😢 🔥 👍), Copy, and "Delete for everyone" (only your own messages). Ticks show sent/read. Typing indicator and "online / last seen" are shown.
+- Privacy: messages, photos, voice, status and call setup are end-to-end encrypted; the server can't read them. Everything disappears after 24 hours (messages and statuses). The only thing that is NOT end-to-end encrypted is the chat with Lynko AI (that's you), because your messages go to the AI service; AI history stays only on the phone for 24 hours.
+- Status: like WhatsApp status — post a photo/video, camera shot or text status; contacts see it for 24 hours; you can see who viewed it; contacts can reply or send ❤️.
+- Voice calls: Calls tab or the 📞 button inside a chat. Audio only. Works over WiFi and mobile data (if the direct connection fails the call is carried through the server, still encrypted). Needs microphone permission. Settings may show "Protect IP address in calls".
+- Notifications: Settings → Notifications (or the bar "Get alerts for new messages & calls" → Turn on). Allow the permission in the browser. They show only the sender's name, never the message text (because messages are encrypted). On iPhone the app must first be added to the Home Screen. If alerts don't come: check the browser/Android notification permission for the app, turn Notifications off and on again, and open the app once.
+- Chat lock: Settings → Chat lock: set a code, then "Lock this chat" from the chat's ⋮ menu. Locked chats hide names and previews and are shown under the "Locked 🔒" filter. "Lock app" asks the password again after you leave the app (right away / 1 min / 10 min). "Hide app preview" blanks the app in the app switcher.
+- Hide last seen & online: Settings or Profile. If you hide yours, you can't see others' either.
+- Profile: change profile photo, "About" text, see your ID.
+- Wallpaper: Wallpaper tab or ⋮ → Wallpaper (colors, or your own photo; it's saved only on your phone).
+- Lynko Official: a verified channel with news from the Lynko team; you can read it but can't reply.
+- Log out: menu ⋮ → Log out. If someone forgets the password, the account can't be recovered because of the encryption — say so honestly.
+If asked something about the app that is not listed here, say you're not sure instead of inventing it.`;
+const AI_SYS = (name) => `You are Lynko AI, the friendly assistant inside the Lynko chat app. You are chatting with ${name || 'a user'}. Now: ${new Date().toLocaleString('en-GB', { timeZone: 'Asia/Colombo', dateStyle: 'full', timeStyle: 'short' })} (Sri Lanka time).
+
+LANGUAGE (most important):
+- Always answer in the language and style the user writes in. Sinhala script → reply in natural Sinhala script. "Singlish" (Sinhala typed in English letters, e.g. "mata help ekak oni") → reply in simple friendly Singlish the same way. English → English. Tamil → Tamil. If they mix, mix naturally. If they ask for another language, use it.
+- Write Sinhala the way people really talk in chat: short, warm, simple words, correct spelling and grammar. Do not translate word-for-word from English. For tech words (app, notification, call, password, settings) keep the common English word inside the Sinhala sentence.
+- Never switch into Chinese, Hindi, Arabic or any script the user did not use. Never output your reasoning or notes.
+
+STYLE:
+- Be quick and direct: answer first, then at most a little extra. Chat-sized replies, usually 1–5 short lines. For how-to questions give numbered steps (1. 2. 3.), one short line each.
+- Plain text only: no markdown symbols (no **, #, backticks, tables). Emojis sparingly, only when they fit.
+- Be honest. If you don't know, or it needs live info you can't see, say so briefly. Don't invent facts, links, numbers or app features. For medical, legal or money questions give general information and suggest asking a professional for decisions.
+- Be kind and respectful. Don't help with anything harmful or illegal. Never claim to be Meta AI, ChatGPT or another brand — you are Lynko AI.
+${APP_GUIDE}`;
 app.post('/api/ai', auth, async (req, res) => {
   if (!GROQ_KEY) return res.status(503).json({ error: 'AI is not set up on the server (GROQ_API_KEY)' });
   if (aiLimited(req.u.id)) return res.status(429).json({ error: 'Slow down a little — try again in a minute' });
@@ -469,8 +499,8 @@ app.post('/api/ai', auth, async (req, res) => {
     const oss = /gpt-oss/.test(model);   // gpt-oss "thinks" first: keep that short and hidden so the answer fits in the token limit
     return fetch('https://api.groq.com/openai/v1/chat/completions', { method: 'POST', signal: ac.signal,
       headers: { Authorization: 'Bearer ' + GROQ_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model, stream: true, temperature: 0.7, max_tokens: oss ? 2048 : 1024, ...(oss ? { reasoning_effort: 'low', include_reasoning: false } : {}),
-        messages: [{ role: 'system', content: AI_SYS() }, ...list] }) });
+      body: JSON.stringify({ model, stream: true, temperature: 0.6, max_tokens: oss ? 2048 : 1024, ...(oss ? { reasoning_effort: 'low', include_reasoning: false } : {}),
+        messages: [{ role: 'system', content: AI_SYS(req.u.u) }, ...list] }) });
   };
   try {
     const order = [...new Set([goodModel, GROQ_MODEL, 'openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'llama-3.3-70b-versatile', 'llama-3.1-8b-instant'].filter(Boolean))];
@@ -486,7 +516,9 @@ app.post('/api/ai', auth, async (req, res) => {
   if (!r.ok || !r.body) return res.status(502).json({ error: r.status === 429 ? 'AI is busy, try again shortly' : 'AI error, try again' });
   mon.count('ai');
   res.set({ 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-cache, no-transform', 'X-Accel-Buffering': 'no' });
-  const td = new TextDecoder(); let buf = '';
+  try { res.socket && res.socket.setNoDelay(true); } catch {}
+  res.flushHeaders();
+  const td = new TextDecoder(); let buf = '', wrote = 0;
   try {
     for await (const chunk of r.body) {
       buf += td.decode(chunk, { stream: true });
@@ -494,10 +526,11 @@ app.post('/api/ai', auth, async (req, res) => {
         const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
         if (!line.startsWith('data:')) continue;
         const d = line.slice(5).trim(); if (d === '[DONE]') continue;
-        try { const t = JSON.parse(d).choices[0].delta.content; if (t) res.write(t); } catch {}
+        try { const t = JSON.parse(d).choices[0].delta.content; if (t) { wrote = 1; res.write(t); } } catch {}
       }
     }
   } catch {}
+  if (!wrote) res.write('Sorry, I couldn’t answer that. Please ask again.');
   res.end();
 });
 
