@@ -1,6 +1,6 @@
 // LYNKO CHAT service worker — app shell + last-seen chats work offline.
 // Cached API data is the same ENCRYPTED data the server sends; it is wiped on logout.
-const SHELL = 'lynko-shell-v4', API = 'lynko-api-v2', EXT = 'lynko-ext-v2';
+const SHELL = 'lynko-shell-v5', API = 'lynko-api-v2', EXT = 'lynko-ext-v2';
 const PRE = ['/', '/chat', '/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png'];
 const READ = /^\/api\/(me|config|chats|messages|statuses|official|dp\/|blob\/|status\/)/;
 const IMMUTABLE = /^\/api\/(blob\/|dp\/|status\/[^/]+\/blob)/;   // media never changes -> cache first
@@ -9,7 +9,7 @@ self.addEventListener('install', e => {
   e.waitUntil(caches.open(SHELL).then(c => Promise.all(PRE.map(u => c.add(u).catch(() => {})))).then(() => self.skipWaiting()));
 });
 self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => ![SHELL, API, EXT].includes(k)).map(k => caches.delete(k))))
+  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => ![SHELL, API, EXT, 'lynko-lock'].includes(k)).map(k => caches.delete(k))))
     .then(() => self.clients.claim()));
 });
 
@@ -89,6 +89,8 @@ self.addEventListener('push', e => {
     if (d.type === 'missed') (await self.registration.getNotifications({ tag: 'call' })).forEach(n => n.close());
     const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
     const seen = wins.some(w => w.visibilityState === 'visible');
+    try { const r = await (await caches.open('lynko-lock')).match('/__locked');   // locked chats: no name, no hint
+      if (r && d.type === 'msg' && (await r.json()).includes(d.from)) d = { ...d, title: 'LYNKO CHAT', body: 'You have a new message', tag: 'lk', from: null }; } catch {}
     const url = d.type === 'call' ? '/chat?call=1' : d.from ? '/chat?c=' + d.from : '/chat';
     await self.registration.showNotification(d.title || 'LYNKO CHAT', {
       body: d.body || 'New message', tag: d.tag || 'lynko', renotify: true, icon: '/icons/icon-192.png', badge: '/icons/icon-192.png',
