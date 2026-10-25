@@ -267,6 +267,7 @@ if(vv){vv.addEventListener('resize',f);vv.addEventListener('scroll',f)}document.
 <input type="file" id="fs" accept="image/*,video/*" hidden><input type="file" id="fsc" accept="image/*" capture="environment" hidden><input type="file" id="fg" accept="image/*,video/*" hidden><input type="file" id="fc" accept="image/*" capture="environment" hidden>
 <script src="/lock.js?v={{V}}"></script>
 <script src="/features.js?v={{V}}"></script>
+<script src="/emoji.js?v={{V}}" defer></script>
 <script>
 const $=id=>document.getElementById(id), enc=new TextEncoder(), dec=new TextDecoder();
 const hex=b=>[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('');
