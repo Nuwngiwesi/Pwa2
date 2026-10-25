@@ -43,6 +43,7 @@ input::placeholder{color:#b98aa0}
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="icon" href="/icons/icon-192.png">
 <script src="/install.js" defer></script>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
 </head>
 <body>
 <main class="card">
@@ -52,6 +53,7 @@ input::placeholder{color:#b98aa0}
   <input id="u" type="tel" placeholder="Phone number" autocomplete="tel" inputmode="tel" spellcheck="false">
   <input id="nm" placeholder="Your name" maxlength="30" autocomplete="name" hidden>
   <input id="p" type="password" placeholder="Password" autocomplete="current-password">
+  <div id="cf" style="display:flex;justify-content:center;margin:2px 0 6px"></div>
   <button class="go" id="go">Log in</button>
   <div id="err"></div>
   <button id="inst" class="go" type="button" style="background:rgba(255,255,255,.1);box-shadow:none;border:1px solid var(--line);margin-top:10px" hidden>📲 Install LYNKO CHAT app</button>
@@ -80,14 +82,21 @@ $('tl').onclick=()=>setMode('login');$('tr').onclick=()=>setMode('reg');
 async function post(url,body){const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Something went wrong');return d}
 
-let CC='94';fetch('/api/config').then(r=>r.json()).then(c=>{CC=c.cc||CC}).catch(()=>{});
+let CC='94',TSK='',cfTok='',cfId=null,cfTry=0;
+// Cloudflare Turnstile: shown only when the server has the keys set
+function cfInit(){if(!TSK||cfId!==null)return;
+  if(!window.turnstile){if(++cfTry<60)setTimeout(cfInit,250);else $('err').textContent='Security check couldn’t load. Check your connection and reload.';return}
+  cfId=turnstile.render('#cf',{sitekey:TSK,theme:'dark',callback:t=>{cfTok=t;if($('err').textContent.startsWith('Please complete'))$('err').textContent=''},'expired-callback':()=>{cfTok=''},'error-callback':()=>{cfTok=''}})}
+const cfReset=()=>{cfTok='';if(cfId!==null&&window.turnstile)try{turnstile.reset(cfId)}catch{}};
+fetch('/api/config').then(r=>r.json()).then(c=>{CC=c.cc||CC;TSK=c.turnstile||'';cfInit()}).catch(()=>{});
 // same rule as the server: digits only, local 0xxxxxxxxx -> country code. Letters = an old username account.
 const ident=raw=>{raw=raw.trim();if(/[a-z]/i.test(raw))return raw.toLowerCase();let d=raw.replace(/\D/g,'');if(d.startsWith('00'))d=d.slice(2);else if(d.startsWith('0'))d=CC+d.slice(1);return d};
 $('go').onclick=async()=>{
   const id=ident($('u').value), pw=$('p').value, name=$('nm').value.trim(), legacy=/[a-z]/.test(id);
   if(!legacy&&!/^\d{8,15}$/.test(id)){$('err').textContent='Enter a valid phone number';return}
   if(mode=='reg'&&!name){$('err').textContent='Enter your name';return}
-  if(pw.length<6){$('err').textContent='Password must be 6+ characters';return}
+  if(pw.length<(mode=='reg'?8:6)){$('err').textContent=mode=='reg'?'Password must be 8+ characters':'Password must be 6+ characters';return}
+  if(TSK&&!cfTok){$('err').textContent='Please complete the security check';return}
   if(mode=='reg'&&legacy){$('err').textContent='Enter a phone number';return}
   $('go').disabled=true;$('err').textContent=mode=='reg'?'Creating your keys…':'';
   try{
@@ -100,9 +109,9 @@ $('go').onclick=async()=>{
       const iv=crypto.getRandomValues(new Uint8Array(12));
       const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv},wk,enc.encode(priv));
       encPriv=JSON.stringify({iv:b64(iv),ct:b64(ct)});
-      me=await post('/api/register',{phone:id,name,auth,pub,encPriv});
+      me=await post('/api/register',{phone:id,name,auth,pub,encPriv,cf:cfTok});
     }else{
-      me=await post('/api/login',legacy?{username:id,auth}:{phone:id,auth});
+      me=await post('/api/login',legacy?{username:id,auth,cf:cfTok}:{phone:id,auth,cf:cfTok});
       encPriv=me.encPriv;const e=JSON.parse(encPriv);
       priv=new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:unb64(e.iv)},wk,unb64(e.ct)));
     }
@@ -111,7 +120,7 @@ $('go').onclick=async()=>{
     localStorage.removeItem('lynko_priv');localStorage.setItem('lynko_enc',encPriv);localStorage.setItem('lynko_ident',id);
     localStorage.setItem('lynko_id',me.id);localStorage.setItem('lynko_name',me.username||name);sessionStorage.setItem('lynko_priv',priv);
     location.href='/chat';
-  }catch(e){$('err').textContent=e.name=='OperationError'?'Wrong number or password':e.message;$('go').disabled=false}
+  }catch(e){$('err').textContent=e.name=='OperationError'?'Wrong number or password':e.message;$('go').disabled=false;cfReset()}
 };
 ['u','nm','p'].forEach(i=>$(i).addEventListener('keydown',e=>{if(e.key=='Enter')$('go').click()}));
 fetch('/api/me').then(r=>{if(r.ok&&localStorage.getItem('lynko_enc'))location.href='/chat'});
