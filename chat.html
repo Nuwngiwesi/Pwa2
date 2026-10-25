@@ -284,7 +284,7 @@ function leave(){['lynko_priv','lynko_enc'].forEach(k=>localStorage.removeItem(k
 let me,priv,cur=null,contacts=new Map(),chats=new Map(),msgs=[],seen=new Set(),keys={},urls={},pl=new Map(),unlocked=new Set(),lastDay='',tc=0,typingT={},lastTy=0;
 const hm=t=>new Date(t).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'});
 const dayLbl=t=>{const d=new Date(t),n=new Date(),y=new Date(n-864e5);return d.toDateString()==n.toDateString()?'Today':d.toDateString()==y.toDateString()?'Yesterday':d.toLocaleDateString()};
-const av=(c,cls='')=>`<div class="av ${cls}">${c.dpv?`<img src="/api/dp/${c.id}?v=${c.dpv}" alt="">`:(c.username||'?')[0].toUpperCase()}</div>`;
+const av=(c,cls='')=>`<div class="av ${cls}">${c.dpv?`<img src="/api/dp/${c.id}?v=${c.dpv}" alt="" decoding="async">`:(c.username||'?')[0].toUpperCase()}</div>`;
 const lk=id=>`lk:${me.id}:${id}`;
 const sha=async s=>hex(await crypto.subtle.digest('SHA-256',enc.encode(s)));
 
@@ -421,7 +421,11 @@ async function setLast(peer,m,unread,live){
   const u=unread!==undefined?unread:(live&&m.from!=me.id?(old.unread||0)+1:old.unread||0);
   chats.set(peer,{m,txt:pvText(p),unread:peer==cur&&!document.hidden?0:u})}
 async function loadChats(){const d=await api('/api/chats');await Promise.all(d.map(x=>setLast(x.peer,x.last,x.unread)));renderList()}
-async function loadContacts(){const d=await api('/api/me');Object.assign(me,{about:d.about,dpv:d.dpv});contacts=new Map(d.contacts.map(c=>[c.id,nick(c)]));paintMe();renderList()}
+async function loadContacts(){const d=await api('/api/me');Object.assign(me,{about:d.about,dpv:d.dpv});contacts=new Map(d.contacts.map(c=>[c.id,nick(c)]));paintMe();renderList();warmBanners()}
+// banners are only opened from Contact info: fetch them quietly in the background (service worker keeps them)
+const warmed=new Set();
+function warmBanner(c){if(!c||!c.bnv||!window.fetch)return;const u=`/api/banner/${c.id}?v=${c.bnv}`;if(warmed.has(u))return;warmed.add(u);fetch(u).catch(()=>warmed.delete(u))}
+function warmBanners(){const run=()=>{let n=0;for(const c of contacts.values()){if(n++>=15)break;warmBanner(c)}};(window.requestIdleCallback||(f=>setTimeout(f,1800)))(run,{timeout:4000})}
 let flt='all',qs='';
 // ── Locked chats: hidden until the SECRET CODE is typed in the search bar ──
 function syncChips(){
@@ -490,7 +494,7 @@ function reconcile(list){   // server list is the truth: refresh ticks / reactio
   mcache.set(cur,msgs.filter(m=>!m.pending))}
 async function openChat(id){
   if(LOCK.chat.has(id)&&!(await LOCK.chat.gate()))return;
-  const first=!cur,tok=++openTok;cur=id;msgs=[];seen=new Set();lastDay='';
+  const first=!cur,tok=++openTok;cur=id;msgs=[];seen=new Set();lastDay='';warmBanner(contacts.get(id));
   history[first?'pushState':'replaceState']({c:1},'');
   $('app').classList.add('chatting');['head','msgs','comp'].forEach(x=>$(x).hidden=false);$('none').hidden=true;
   const c=contacts.get(id);$('hn').textContent=c.username;$('hav').innerHTML=av(c);F.typingStop();setSub();F.hdr();
@@ -909,7 +913,7 @@ document.addEventListener('visibilitychange',()=>{
   await LOCK.ready;const pj=sessionStorage.getItem('lynko_priv');if(!pj)return leave();
   let cfg;try{[me,cfg]=await Promise.all([api('/api/me'),api('/api/config')])}catch{return}
   priv=await crypto.subtle.importKey('jwk',JSON.parse(pj),{name:'ECDH',namedCurve:'P-256'},false,['deriveKey']);
-  contacts=new Map(me.contacts.map(c=>[c.id,nick(c)]));paintMe();applyWp();try{renderList()}catch(e){console.error(e)}loadChats().catch(()=>{});loadStatuses().catch(()=>{});loadOfficial().catch(()=>{});
+  contacts=new Map(me.contacts.map(c=>[c.id,nick(c)]));paintMe();applyWp();try{renderList()}catch(e){console.error(e)}warmBanners();loadChats().catch(()=>{});loadStatuses().catch(()=>{});loadOfficial().catch(()=>{});
   if(typeof Pusher==='undefined')await new Promise(r=>{const e=$('pjs');if(!e)return r();e.addEventListener('load',r);e.addEventListener('error',r);setTimeout(r,5000)});
   if(typeof Pusher==='undefined')return;   // offline: show saved chats only
   const ps=new Pusher(cfg.key,{cluster:cfg.cluster,channelAuthorization:{endpoint:'/api/pusher/auth'}}),ch=ps.subscribe('private-u-'+me.id);
