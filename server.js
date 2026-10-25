@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express'), crypto = require('crypto'), path = require('path'), compression = require('compression');
 const bcrypt = require('bcryptjs'), jwt = require('jsonwebtoken'), Pusher = require('pusher');
 const { MongoClient, ObjectId } = require('mongodb');
-const https = require('https');
+const https = require('https'), fs = require('fs');
 
 const SECRET = process.env.SESSION_SECRET;
 const MK = Buffer.from(process.env.MESSAGE_KEY || '', 'base64');
@@ -106,7 +106,8 @@ const aiLimited = id => { const n = Date.now(), a = (aiHits.get(id) || []).filte
 let U, M, S, K;   // users, messages, statuses, calls  (media is NOT in Mongo any more)
 
 // ── media storage (encrypted files only; see storage.js) ──
-if (!store) console.warn('⚠ No media storage configured: photo/video sending is disabled (set LAKIYA_API_KEY or S3_* — see README)');
+if (!store) console.warn('⚠ No media storage configured: photo / video / voice sending is disabled (set S3_BUCKET + S3_ENDPOINT + S3_ACCESS_KEY + S3_SECRET_KEY)');
+else if (store.check) store.check().then(() => console.log('✔ media bucket reachable'), e => console.error('✖ media bucket check FAILED — voice/photos will not send:', e.name + ': ' + e.message));
 const mine = (uid, k) => typeof k === 'string' && k.startsWith(`u/${uid}/`) && /^u\/\d{8}\/[\w-]{6,40}$/.test(k);
 const delObj = k => store && store.del(k).catch(() => {});
 
@@ -115,7 +116,10 @@ for (const m of ['get', 'post', 'delete']) { const o = app[m].bind(app);
   app[m] = (p, ...h) => h.length ? o(p, ...h.map(f => f.constructor.name === 'AsyncFunction'
     ? (q, r, n) => f(q, r, n).catch(e => { console.error(e); mon.logError('server', e, { path: (q.route && q.route.path) || q.path, method: q.method, user: q.u && q.u.id }); if (!r.headersSent) r.status(500).json({ error: 'Server error' }); }) : f)) : o(p); }
 
-const page = f => (q, r) => r.sendFile(path.join(__dirname, f));
+// every deploy gets a new version id; it is put into the script URLs of the pages, so phones never keep running an old lock.js / install.js
+const VER = String(process.env.RENDER_GIT_COMMIT || process.env.SOURCE_VERSION || process.env.RAILWAY_GIT_COMMIT_SHA || Date.now()).slice(0, 12);
+const pageCache = {};
+const page = f => (q, r) => { if (!pageCache[f]) pageCache[f] = fs.readFileSync(path.join(__dirname, f), 'utf8').split('{{V}}').join(VER); r.set('Cache-Control', 'no-cache').type('html').send(pageCache[f]); };
 app.get('/health', (q, r) => r.type('text').send('ok'));   // for UptimeRobot (no DB, no login)
 mon.mount(app);                                           // /admin + /admin/api/*
 app.post('/api/log-error', mon.clientError);              // browser error reports (rate limited)
@@ -358,11 +362,26 @@ app.post('/api/push/unsubscribe', auth, async (req, res) => {
 });
 
 // ── voice calls (WebRTC audio only; this server only relays the handshake, audio goes phone-to-phone) ──
-app.get('/api/ice', auth, (q, r) => {
-  const ice = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }];
-  if (process.env.TURN_URL) ice.push({ urls: process.env.TURN_URL.split(',').map(x => x.trim()), username: process.env.TURN_USER, credential: process.env.TURN_PASS });
-  r.json(ice);
-});
+let iceCache = { t: 0, v: null };
+async function iceServers() {   // STUN + a TURN relay: without a relay many mobile networks can't connect calls at all
+  if (iceCache.v && Date.now() - iceCache.t < 10 * 6e4) return iceCache.v;
+  const ice = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }], E = process.env;
+  try {
+    if (E.CF_TURN_KEY_ID && E.CF_TURN_API_TOKEN) {   // Cloudflare Realtime TURN (free tier)
+      const r = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${E.CF_TURN_KEY_ID}/credentials/generate-ice-servers`, { method: 'POST',
+        headers: { Authorization: 'Bearer ' + E.CF_TURN_API_TOKEN, 'Content-Type': 'application/json' }, body: JSON.stringify({ ttl: 86400 }), signal: AbortSignal.timeout(5000) });
+      const j = await r.json(); if (r.ok && Array.isArray(j.iceServers)) ice.push(...j.iceServers); else console.warn('cloudflare turn:', r.status);
+    } else if (E.METERED_DOMAIN && E.METERED_API_KEY) {   // Metered.ca TURN (free tier)
+      const r = await fetch(`https://${E.METERED_DOMAIN}/api/v1/turn/credentials?apiKey=${encodeURIComponent(E.METERED_API_KEY)}`, { signal: AbortSignal.timeout(5000) });
+      const j = await r.json(); if (r.ok && Array.isArray(j)) ice.push(...j); else console.warn('metered turn:', r.status);
+    }
+  } catch (e) { console.warn('turn lookup failed:', e.message); }
+  if (E.TURN_URL) ice.push({ urls: E.TURN_URL.split(',').map(x => x.trim()), username: E.TURN_USER, credential: E.TURN_PASS });
+  if (!ice.some(x => [].concat(x.urls).some(u => /^turns?:/i.test(u))) && E.PUBLIC_TURN !== '0')   // last resort so calls work out of the box (shared, best-effort)
+    ice.push({ urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turn:openrelay.metered.ca:443?transport=tcp', 'turns:openrelay.metered.ca:443?transport=tcp'], username: 'openrelayproject', credential: 'openrelayproject' });
+  iceCache = { t: Date.now(), v: ice }; return ice;
+}
+app.get('/api/ice', auth, async (q, r) => { r.set('Cache-Control', 'no-store'); r.json(await iceServers()); });
 const CID = /^[a-f0-9]{16,32}$/;
 const SDPMAX = 20000;   // call setup now travels end-to-end encrypted (base64), so it is larger than raw SDP
 const callHits = new Map();
@@ -376,7 +395,9 @@ app.post('/api/call', auth, async (req, res) => {
     if (typeof sdp !== 'string' || sdp.length > SDPMAX || to === me) return res.status(400).json({ error: 'Bad call' });
     if (callLimited(me)) return res.status(429).json({ error: 'Too many calls. Try again in a minute.' });
     if (!(await U.findOne({ id: to, contacts: me }, { projection: { _id: 1 } }))) return res.status(404).json({ error: 'User not found' });
-    if (await K.findOne({ st: { $in: ['ringing', 'active'] }, ts: { $gt: new Date(Date.now() - 3 * 36e5) }, $or: [{ from: to }, { to }] })) return res.json({ busy: 1 });
+    const nowT = Date.now();
+    if (await K.findOne({ $and: [{ $or: [{ from: to }, { to }] }, { $or: [{ st: 'ringing', ts: { $gt: new Date(nowT - 60e3) } }, { st: 'active', hb: { $gt: new Date(nowT - 90e3) } }] }] })) return res.json({ busy: 1 });
+    await K.updateMany({ st: { $in: ['ringing', 'active'] }, $or: [{ from: me }, { to: me }] }, { $set: { st: 'ended', ended: new Date() }, $unset: { offer: 1 } });   // your own leftover call records
     await K.insertOne({ cid, from: me, to, st: 'ringing', ts: new Date(), offer: sdp }); mon.count('call');
     fire([to], 'call', { t: 'offer', cid, from: me, sdp });
     push(to, { type: 'call', title: req.u.u, body: 'Incoming voice call', tag: 'call', from: me });
@@ -387,9 +408,10 @@ app.post('/api/call', auth, async (req, res) => {
   const other = d.from === me ? d.to : d.from;
   if (type === 'answer') {
     if (d.to !== me || d.st !== 'ringing' || typeof sdp !== 'string' || sdp.length > SDPMAX) return res.status(409).json({ error: 'Call is no longer ringing' });
-    await K.updateOne({ cid }, { $set: { st: 'active', answeredAt: new Date() }, $unset: { offer: 1 } });
+    await K.updateOne({ cid }, { $set: { st: 'active', answeredAt: new Date(), hb: new Date() }, $unset: { offer: 1 } });
     fire([other], 'call', { t: 'answer', cid, sdp }); return res.json({ ok: 1 });
   }
+  if (type === 'hb') { await K.updateOne({ cid, st: 'active' }, { $set: { hb: new Date() } }); return res.json({ ok: 1 }); }
   if (type === 'reject' || type === 'end') {
     if (!['ringing', 'active'].includes(d.st)) return res.json({ ok: 1 });
     const st = d.st === 'ringing' ? (d.from === me ? 'missed' : 'declined') : 'ended';
@@ -476,7 +498,11 @@ app.use((e, q, r, n) => {
         const f = await U.findOne({ id: d.from }, { projection: { username: 1 } });
         push(d.to, { type: 'missed', title: 'Missed voice call', body: 'from ' + (f ? f.username : 'someone'), tag: 'missed' + d.from, from: d.from });
       }
-      await K.updateMany({ st: 'active', answeredAt: { $lt: new Date(Date.now() - 4 * 36e5) } }, { $set: { st: 'ended' } });
+      const dead = new Date(Date.now() - 100e3);   // active but no heartbeat for 100 s = the phone vanished
+      for (const d of await K.find({ st: 'active', $or: [{ hb: { $lt: dead } }, { hb: { $exists: false }, answeredAt: { $lt: dead } }] }).limit(50).toArray()) {
+        const r = await K.updateOne({ cid: d.cid, st: 'active' }, { $set: { st: 'ended', ended: new Date(), dur: secs(d) } });
+        if (r.modifiedCount) fire([d.from, d.to], 'call', { t: 'end', cid: d.cid });
+      }
     } catch (e) { console.error('call sweep', e.message); }
   }, 20e3).unref();
   await C.E.createIndex({ ts: 1 }, { expireAfterSeconds: 14 * 86400 }); await C.O.createIndex({ ts: 1 });
