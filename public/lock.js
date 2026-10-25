@@ -76,8 +76,8 @@ else if (sessionStorage.getItem('lynko_priv')) resolveReady();          // same 
 else show();
 
 // ───────────── lock again after leaving the app ─────────────
-const AFTER = { now: 10e3, '1m': 60e3, '10m': 600e3 };      // "right away" keeps a 10 s grace for the camera / file picker
-const grace = () => AFTER[localStorage.getItem('lk_after') || 'now'] ?? 10e3;
+const AFTER = { never: Infinity, now: 10e3, '1m': 60e3, '10m': 600e3 };      // "right away" keeps a 10 s grace for the camera / file picker
+const grace = () => AFTER[localStorage.getItem('lk_after') || 'never'] ?? Infinity;
 document.addEventListener('click', e => { if (e.target && e.target.type == 'file') sessionStorage.setItem('lk_skip', Date.now() + 180e3) }, true);
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) { if (!locked) sessionStorage.setItem('lk_hid', Date.now()); return }
@@ -214,5 +214,5 @@ const cover = () => { if (shieldOn() && localStorage.getItem('lynko_enc')) shiel
 document.addEventListener('visibilitychange', () => document.hidden ? cover() : uncover());
 addEventListener('pagehide', cover); addEventListener('pageshow', uncover); addEventListener('focus', uncover);
 
-window.LOCK = { ready, chat, checkPw, askText, shield: { get: shieldOn, set: v => localStorage.setItem('lk_shield', v ? '1' : '0') }, lock: show, setAfter: v => localStorage.setItem('lk_after', v), after: () => localStorage.getItem('lk_after') || 'now' };
+window.LOCK = { ready, chat, checkPw, askText, shield: { get: shieldOn, set: v => localStorage.setItem('lk_shield', v ? '1' : '0') }, lock: show, setAfter: v => localStorage.setItem('lk_after', v), after: () => localStorage.getItem('lk_after') || 'never' };
 })();
