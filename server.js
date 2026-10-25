@@ -104,7 +104,8 @@ async function push(uid, payload, force) {
 }
 
 // ── Lynko AI (Groq) ──
-const GROQ_KEY = process.env.GROQ_API_KEY, GROQ_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+const GROQ_KEY = process.env.GROQ_API_KEY, GROQ_MODEL = process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
+let goodModel = '';   // the model that last worked (skips retired ones)
 const aiHits = new Map();
 const aiLimited = id => { const n = Date.now(), a = (aiHits.get(id) || []).filter(t => n - t < 6e4); a.push(n); aiHits.set(id, a); if (aiHits.size > 5e3) aiHits.clear(); return a.length > 20; };
 
@@ -464,14 +465,20 @@ app.post('/api/ai', auth, async (req, res) => {
   if (!list.length || list[list.length - 1].role !== 'user') return res.status(400).json({ error: 'Bad request' });
   const ac = new AbortController(); res.on('close', () => ac.abort());
   let r;
-  const ask = model => fetch('https://api.groq.com/openai/v1/chat/completions', { method: 'POST', signal: ac.signal,
-    headers: { Authorization: 'Bearer ' + GROQ_KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model, stream: true, temperature: 0.7, max_tokens: 1024, messages: [{ role: 'system', content: AI_SYS() }, ...list] }) });
+  const ask = model => {
+    const oss = /gpt-oss/.test(model);   // gpt-oss "thinks" first: keep that short and hidden so the answer fits in the token limit
+    return fetch('https://api.groq.com/openai/v1/chat/completions', { method: 'POST', signal: ac.signal,
+      headers: { Authorization: 'Bearer ' + GROQ_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model, stream: true, temperature: 0.7, max_tokens: oss ? 2048 : 1024, ...(oss ? { reasoning_effort: 'low', include_reasoning: false } : {}),
+        messages: [{ role: 'system', content: AI_SYS() }, ...list] }) });
+  };
   try {
-    for (const model of [...new Set([GROQ_MODEL, 'llama-3.3-70b-versatile', 'llama-3.1-8b-instant'])]) {   // a retired / rate-limited model falls through to the next one
+    const order = [...new Set([goodModel, GROQ_MODEL, 'openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'llama-3.3-70b-versatile', 'llama-3.1-8b-instant'].filter(Boolean))];
+    for (const model of order) {   // a retired / unavailable / rate-limited model falls through to the next one
       r = await ask(model);
-      if (r.ok && r.body) break;
+      if (r.ok && r.body) { if (goodModel !== model) { goodModel = model; console.log('AI model in use:', model); } break; }
       const t = (await r.text().catch(() => '')).slice(0, 300); console.error('groq', model, r.status, t);
+      if (model === goodModel) goodModel = '';
       if (r.status === 401) return res.status(502).json({ error: 'AI key is invalid — update GROQ_API_KEY on the server' });
       if (![400, 404, 429, 503].includes(r.status)) break;
     }
