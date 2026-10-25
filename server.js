@@ -29,7 +29,8 @@ const CSP = ["default-src 'self'", "script-src 'self' 'unsafe-inline' https://js
   "font-src 'self' https://fonts.gstatic.com data:", "img-src 'self' data: blob:", "media-src 'self' blob: data:", "connect-src 'self' https://*.pusher.com wss://*.pusher.com https://challenges.cloudflare.com", "frame-src https://challenges.cloudflare.com",
   "worker-src 'self'", "manifest-src 'self'", "object-src 'none'", "base-uri 'self'", "form-action 'self'", "frame-ancestors 'none'"].join('; ');
 app.use((q, r, n) => {
-  r.set({ 'Content-Security-Policy': CSP, 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY', 'Referrer-Policy': 'no-referrer',
+  const h = String(q.headers.host || ''), ws = /^[\w.-]+(:\d+)?$/.test(h) ? ` wss://${h} ws://${h}` : '';   // call audio relay (WebSocket to this same server)
+  r.set({ 'Content-Security-Policy': CSP.replace("connect-src 'self'", "connect-src 'self'" + ws), 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY', 'Referrer-Policy': 'no-referrer',
     'Permissions-Policy': 'microphone=(self), camera=(self), geolocation=(), payment=(), usb=(), bluetooth=()', 'Cross-Origin-Opener-Policy': 'same-origin' });
   if (q.secure) r.set('Strict-Transport-Security', 'max-age=15552000; includeSubDomains');
   n();
@@ -107,6 +108,7 @@ const GROQ_KEY = process.env.GROQ_API_KEY, GROQ_MODEL = process.env.GROQ_MODEL |
 const aiHits = new Map();
 const aiLimited = id => { const n = Date.now(), a = (aiHits.get(id) || []).filter(t => n - t < 6e4); a.push(n); aiHits.set(id, a); if (aiHits.size > 5e3) aiHits.clear(); return a.length > 20; };
 
+let relay = null;
 let U, M, S, K;   // users, messages, statuses, calls  (media is NOT in Mongo any more)
 
 // ── media storage (encrypted files only; see storage.js) ──
@@ -430,6 +432,7 @@ app.post('/api/call', auth, async (req, res) => {
     if (!['ringing', 'active'].includes(d.st)) return res.json({ ok: 1 });
     const st = d.st === 'ringing' ? (d.from === me ? 'missed' : 'declined') : 'ended';
     await K.updateOne({ cid }, { $set: { st, dur: secs(d), ended: new Date() }, $unset: { offer: 1, answer: 1 } });
+    if (relay) relay.close(cid);
     fire([other], 'call', { t: type, cid });
     if (st === 'missed') push(d.to, { type: 'missed', title: 'Missed voice call', body: 'from ' + req.u.u, tag: 'missed' + d.from, from: d.from });
     return res.json({ ok: 1 });
@@ -527,13 +530,18 @@ app.use((e, q, r, n) => {
       const dead = new Date(Date.now() - 100e3);   // active but no heartbeat for 100 s = the phone vanished
       for (const d of await K.find({ st: 'active', $or: [{ hb: { $lt: dead } }, { hb: { $exists: false }, answeredAt: { $lt: dead } }] }).limit(50).toArray()) {
         const r = await K.updateOne({ cid: d.cid, st: 'active' }, { $set: { st: 'ended', ended: new Date(), dur: secs(d) } });
-        if (r.modifiedCount) fire([d.from, d.to], 'call', { t: 'end', cid: d.cid });
+        if (r.modifiedCount) { if (relay) relay.close(d.cid); fire([d.from, d.to], 'call', { t: 'end', cid: d.cid }); }
       }
     } catch (e) { console.error('call sweep', e.message); }
   }, 20e3).unref();
   await C.E.createIndex({ ts: 1 }, { expireAfterSeconds: 14 * 86400 }); await C.O.createIndex({ ts: 1 });
   if (!(await C.O.countDocuments({}, { limit: 1 }))) await C.O.insertOne({ t: 'Welcome to Lynko 💗\nThis is the official channel. News and updates from the Lynko team will appear here.', ts: new Date() });
   setInterval(mon.flush, 3e4);
-  app.listen(process.env.PORT || 3000, () => console.log(`Lynko on :${process.env.PORT || 3000} · media: ${store ? store.name : 'DISABLED'}`));
+  const srv = app.listen(process.env.PORT || 3000, () => console.log(`Lynko on :${process.env.PORT || 3000} · media: ${store ? store.name : 'DISABLED'}`));
+  try {   // call audio relay: the fallback that makes voice calls work on every network, no TURN needed
+    relay = require('./relay')(srv, { verify: t => jwt.verify(t, SECRET),
+      findCall: (cid, uid) => K.findOne({ cid, st: { $in: ['ringing', 'active'] }, $or: [{ from: uid }, { to: uid }] }, { projection: { from: 1, to: 1 } }) });
+    console.log('✔ call audio relay ready');
+  } catch (e) { console.warn('⚠ call audio relay disabled:', e.message); }
   if (store) { store.sweep(); setInterval(store.sweep, 36e5); }
 })().catch(e => { console.error(e); process.exit(1); });
