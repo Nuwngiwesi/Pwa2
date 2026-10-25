@@ -7,21 +7,22 @@
 <title>LYNKO CHAT</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@1,9..144,600&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
-<script src="https://js.pusher.com/8.2.0/pusher.min.js"></script>
+<link rel="preconnect" href="https://js.pusher.com" crossorigin><script async id="pjs" src="https://js.pusher.com/8.2.0/pusher.min.js"></script>
 <style>
 :root{--rose:#ff5c8a;--peach:#ffb38a;--lilac:#b28cff;--txt:#fff0f5;--mut:#d6a6ba;--line:rgba(255,255,255,.12);--panel:#240b1d}
 *{box-sizing:border-box;margin:0;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
 [hidden]{display:none!important}
-html,body{height:100%;width:100%;overflow:hidden}
+html,body{height:100%;width:100%;overflow:hidden;overscroll-behavior:none}
+body{position:fixed;top:0;left:0}
 body{font-family:'DM Sans',system-ui,sans-serif;color:var(--txt);overflow:hidden;background:#1a0713}
 button{font:inherit;cursor:pointer;border:0;color:inherit;background:none}
 input,textarea{font:16px 'DM Sans',sans-serif;color:var(--txt);background:rgba(255,255,255,.08);border:1px solid var(--line);border-radius:14px;padding:12px 14px;outline:0;min-width:0}
 input:focus{border-color:var(--rose)}
 ::placeholder{color:#b98aa0}
-.app{position:relative;width:100%;height:100%;height:100vh;height:calc(var(--vh,1vh)*100);height:100dvh;overflow:hidden;display:grid;grid-template-columns:370px 1fr}
+.app{position:relative;width:100%;height:100%;height:100vh;height:100dvh;height:calc(var(--vh,1vh)*100);overflow:hidden;display:grid;grid-template-columns:370px 1fr;grid-template-rows:minmax(0,1fr)}
 .side,.main{display:flex;flex-direction:column;min-height:0;min-width:0;position:relative}
 .side{background:#1d0817;border-right:1px solid var(--line)}
-.bar{display:flex;align-items:center;gap:6px;padding:calc(10px + env(safe-area-inset-top)) 12px 10px}
+.bar{flex:none;display:flex;align-items:center;gap:6px;padding:calc(10px + env(safe-area-inset-top)) 12px 10px}
 .lg{flex:1;font:italic 600 30px 'Fraunces',serif;background:linear-gradient(120deg,var(--peach),var(--rose) 55%,var(--lilac));-webkit-background-clip:text;background-clip:text;color:transparent;padding-left:6px}
 .lg i{font-style:normal;display:inline-block;animation:beat 1.4s infinite;-webkit-text-fill-color:var(--rose)}
 @keyframes beat{0%,100%{transform:scale(1)}14%{transform:scale(1.25)}28%{transform:scale(1)}42%{transform:scale(1.15)}}
@@ -31,12 +32,12 @@ input:focus{border-color:var(--rose)}
 .av{width:50px;height:50px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:19px;flex:none;overflow:hidden;background:linear-gradient(135deg,var(--peach),var(--rose) 60%,var(--lilac));color:#3a0a24}
 .av img{width:100%;height:100%;object-fit:cover}
 .meb .av,.sm .av{width:38px;height:38px;font-size:16px}
-.srch{padding:0 12px 8px}.srch input{width:100%;border-radius:99px;padding:11px 18px;background:rgba(255,255,255,.08)}
-.chips{display:flex;gap:8px;padding:0 12px 10px;overflow-x:auto;scrollbar-width:none}
+.srch{flex:none;padding:0 12px 8px}.srch input::-webkit-search-decoration{display:none}.srch input{width:100%;border-radius:99px;padding:11px 18px;background:rgba(255,255,255,.08)}
+.chips{flex:none;display:flex;gap:8px;padding:0 12px 10px;overflow-x:auto;scrollbar-width:none}
 .chips button{flex:none;padding:7px 16px;border-radius:99px;background:rgba(255,255,255,.08);font-size:14px;color:var(--mut);border:1px solid transparent}
 .chips button.on{background:rgba(255,92,138,.22);color:var(--txt);border-color:var(--rose)}
-.list{flex:1;overflow-y:auto}
-.nav{display:flex;border-top:1px solid var(--line);background:#1d0817;padding-bottom:env(safe-area-inset-bottom)}
+.list{flex:1 1 0;min-height:0;overflow-y:auto;overscroll-behavior:contain}
+.nav{display:flex;flex:none;border-top:1px solid var(--line);background:#1d0817;padding-bottom:env(safe-area-inset-bottom)}
 .nav button{flex:1;display:grid;justify-items:center;gap:2px;padding:9px 0 8px;font-size:12px;color:var(--mut)}
 .nav i{font-style:normal;font-size:21px;padding:2px 20px;border-radius:99px}.nav .on{color:var(--txt);font-weight:700}.nav .on i{background:rgba(255,92,138,.25)}
 .hero{padding:40px 24px;text-align:center;display:grid;gap:14px;justify-items:center}
@@ -218,13 +219,15 @@ input:-webkit-autofill,textarea:-webkit-autofill{-webkit-box-shadow:0 0 0 100px 
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="icon" href="/icons/icon-192.png">
 <script src="/install.js" defer></script>
-<script>(function(){var f=function(){document.documentElement.style.setProperty('--vh',(window.innerHeight*0.01)+'px')};f();addEventListener('resize',f);addEventListener('orientationchange',f)})()</script>
+<script>(function(){var vv=window.visualViewport,f=function(){document.documentElement.style.setProperty('--vh',((vv?vv.height:window.innerHeight)*0.01)+'px');if(scrollY||scrollX)scrollTo(0,0)};f();
+addEventListener('resize',f);addEventListener('orientationchange',function(){setTimeout(f,150)});addEventListener('scroll',function(){if(scrollY||scrollX)scrollTo(0,0)},{passive:true});
+if(vv){vv.addEventListener('resize',f);vv.addEventListener('scroll',f)}document.addEventListener('focusout',function(){setTimeout(f,80)})})()</script>
 </head>
 <body>
 <div class="app" id="app">
   <aside class="side">
     <div class="bar"><button class="meb" id="meb"></button><b class="lg">Lynko<i>♥</i></b><button class="add" id="addb" title="Add contact" aria-label="Add contact">+</button><button class="ic" id="menub">⋮</button></div>
-    <div class="srch" id="srch"><input id="q" placeholder="Search chats" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="search"></div>
+    <div class="srch" id="srch"><input id="q" type="search" name="lynko-chat-filter" placeholder="Search chats" autocomplete="off" data-lpignore="true" data-1p-ignore data-form-type="other" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="search"></div>
     <div class="chips" id="chips"><button class="on" data-f="all">All</button><button data-f="unread">Unread</button><button data-f="locked">Locked 🔒</button></div>
     <div class="nbar" id="nbar" hidden><span>🔔 Get alerts for new messages &amp; calls</span><button id="nbon">Turn on</button><button id="nbx" aria-label="Dismiss">✕</button></div>
     <div class="list" id="list"></div>
@@ -385,7 +388,7 @@ function offItem(){
   if(l){const t=new Date(l.ts);b.querySelector('time').textContent=t.toDateString()==new Date().toDateString()?hm(l.ts):dayLbl(l.ts)}
   if(off.unread)b.querySelector('.badge').textContent=off.unread>99?'99+':off.unread;
   b.onclick=openOfficial;return b}
-const offShown=()=>'lynko official'.includes(qs)&&(flt=='all'||(flt=='unread'&&off.unread));
+const offShown=()=>tab=='chats'&&(!qs||'lynko official verified'.includes(qs))&&(flt=='all'||(flt=='unread'&&!!off.unread));
 
 // ── chat list ──
 const pvText=p=>p.k=='text'?p.v:(p.k=='img'?'📷 ':'🎥 ')+(p.cap||(p.k=='img'?'Photo':'Video'));
@@ -426,7 +429,7 @@ function renderList(){
     $('hid').onclick=()=>{navigator.clipboard?.writeText(me.id);toast('ID copied')};$('hgo').onclick=addContact;return}
   const arr=[...contacts.values()].sort((a,b)=>(chats.get(b.id)?.m.ts||'').localeCompare(chats.get(a.id)?.m.ts||''))
     .filter(c=>{const L=LOCK.chat.has(c.id),m=c.username.toLowerCase().includes(qs);return flt=='locked'?L&&m:!L&&m&&(flt=='all'||(flt=='unread'&&chats.get(c.id)?.unread))});
-  const lockRow=flt=='all'&&!qs&&LOCK.chat.count()>0&&!LOCK.chat.hidden();if(lockRow)l.insertBefore(LOCK.chat.row(),l.firstChild);
+  const lockRow=flt=='all'&&!qs&&LOCK.chat.count()>0&&!LOCK.chat.hidden();if(lockRow)l.insertBefore(LOCK.chat.row(),l.children[(showOff?1:0)+(showAi?1:0)]||null);
   if(!arr.length){if(!showOff&&!showAi&&!lockRow)l.innerHTML='<div class="empty">No chats found</div>';return}
   if(flt=='locked')l.appendChild(lockNowRow());
   for(const c of arr){
@@ -446,25 +449,43 @@ function renderList(){
 // ── open / close chat ──
 function setSub(){const c=contacts.get(cur);if(!c)return;const s=$('hs');
   if(typingT[cur]){s.textContent='typing…';s.className='ty'}else{const pr=F.pres(cur);s.className=pr=='online'?'on':'';s.textContent=pr||c.about||'End-to-end encrypted · clears in 24h'}}
+let openTok=0;
+const mcache=new Map(),live24=m=>Date.now()-new Date(m.ts)<864e5;   // chats seen this session open instantly
+const cacheMsg=(peer,m)=>{if(m.pending)return;let a=mcache.get(peer);if(!a)mcache.set(peer,a=[]);if(!a.some(x=>x.id==m.id))a.push(m)};
+function paintBatch(list,toEnd){
+  const fresh=list.filter(m=>!seen.has(m.id));if(!fresh.length)return;
+  const box=$('msgs'),near=box.scrollHeight-box.scrollTop-box.clientHeight<220,frag=document.createDocumentFragment();
+  for(const m of fresh){seen.add(m.id);msgs.push(m);paint(m,pl.get(m.id),frag)}
+  box.appendChild(frag);if(toEnd||near)scrollEnd()}
+function reconcile(list){   // server list is the truth: refresh ticks / reactions, drop deleted, add new
+  const ids=new Set(list.map(m=>m.id));
+  for(let i=msgs.length-1;i>=0;i--){const m=msgs[i];if(!m.pending&&!ids.has(m.id)){msgs.splice(i,1);$('m'+m.id)?.remove();seen.delete(m.id)}}
+  for(const m of list){if(!seen.has(m.id))continue;const o=msgs.find(x=>x.id==m.id);if(!o)continue;
+    if(m.r&&!o.r){o.r=true;tickEl($('m'+o.id))}o.rx=m.rx||{};rxEl($('m'+o.id))}
+  paintBatch(list.filter(m=>!seen.has(m.id)));
+  mcache.set(cur,msgs.filter(m=>!m.pending))}
 async function openChat(id){
   if(LOCK.chat.has(id)&&!(await LOCK.chat.gate()))return;
-  const first=!cur;cur=id;msgs=[];seen=new Set();lastDay='';
+  const first=!cur,tok=++openTok;cur=id;msgs=[];seen=new Set();lastDay='';
   history[first?'pushState':'replaceState']({c:1},'');
   $('app').classList.add('chatting');['head','msgs','comp'].forEach(x=>$(x).hidden=false);$('none').hidden=true;
   const c=contacts.get(id);$('hn').textContent=c.username;$('hav').innerHTML=av(c);F.typingStop();setSub();F.hdr();
-  $('msgs').innerHTML='';const ch=chats.get(id);if(ch)ch.unread=0;renderList();
-  const list=await api('/api/messages?with='+id);if(id!=cur)return;
-  await Promise.all(list.map(payload));
-  for(const m of list)await addMsg(m);
-  $('msgs').style.scrollBehavior='auto';scrollEnd();markRead();
+  $('msgs').innerHTML='';$('msgs').style.scrollBehavior='auto';const ch=chats.get(id);if(ch)ch.unread=0;renderList();
+  shared(id).catch(()=>{});   // derive the encryption key now so your first send has zero wait
+  const cached=(mcache.get(id)||[]).filter(m=>live24(m)&&pl.has(m.id));
+  if(cached.length){paintBatch(cached,true);scrollEnd()}
+  let list;try{list=await api('/api/messages?with='+id)}catch(e){if(tok==openTok&&!cached.length&&e.message!='auth')toast('Couldn’t load messages');return}
+  if(tok!=openTok)return;
+  await Promise.all(list.map(payload));if(tok!=openTok)return;
+  const empty=!msgs.length;reconcile(list);if(empty)scrollEnd();markRead();
 }
 function closeChat(){F.typingStop();$('app').classList.remove('chatting');['head','msgs','comp'].forEach(x=>$(x).hidden=true);$('none').hidden=false;$('attm').hidden=true;cur=null;renderList()}
-addEventListener('popstate',()=>{if(skipPop){skipPop=0;return}if(sv){sv._close(true);return}if(cur)closeChat()});
+addEventListener('popstate',()=>{if(skipPop){skipPop=0;return}if(sv){sv._close(true);return}const so=$('setov');if(so){so.remove();return}if(cur)closeChat()});
 $('back').onclick=()=>history.back();
 async function pull(){
   if(!cur||cur=='ai')return;if(cur=='official')return loadOfficial().then(markOffRead);const id=cur,last=msgs.filter(m=>!m.pending).slice(-1)[0]?.ts||'';
   const list=await api('/api/messages?with='+id+(last?'&after='+encodeURIComponent(last):''));
-  if(id!=cur)return;await Promise.all(list.map(payload));for(const m of list)await addMsg(m,true);markRead()}
+  if(id!=cur)return;await Promise.all(list.map(payload));if(id!=cur)return;paintBatch(list,false);list.forEach(m=>cacheMsg(id,m));markRead()}
 function markRead(){
   if(!cur||document.hidden)return;const un=msgs.filter(m=>m.from!=me.id&&!m.r);if(!un.length)return;
   un.forEach(m=>m.r=true);const c=chats.get(cur);if(c)c.unread=0;renderList();api('/api/read','POST',{with:cur}).catch(()=>{})}
@@ -497,8 +518,8 @@ function mediaBox(m,p,b){
     catch{d.classList.remove('ld');d.classList.add('bad')}d._busy=0};
   if(p.k=='img'||urls[m.id])io.observe(d);d.onclick=()=>{if(!d.classList.contains('ok')&&!b._lp)d._load()};
   return d}
-function paint(m,p){
-  const box=$('msgs'),near=box.scrollHeight-box.scrollTop-box.clientHeight<220,mine=m.from==me.id;
+function paint(m,p,into){
+  const box=into||$('msgs'),near=into?false:box.scrollHeight-box.scrollTop-box.clientHeight<220,mine=m.from==me.id;
   const dl=new Date(m.ts).toDateString();if(dl!=lastDay){lastDay=dl;const c=document.createElement('div');c.className='sys';c.textContent=dayLbl(m.ts);box.appendChild(c)}
   const r=document.createElement('div');r.className='row '+(mine?'me':'them');r.id='m'+m.id;r._m=m;
   const b=document.createElement('div');b.className='b';r.appendChild(b);
@@ -511,10 +532,11 @@ function paint(m,p){
   const mt=document.createElement('span');mt.className='meta';mt.innerHTML='<time></time>'+(mine?'<i class="tk"></i>':'');mt.firstChild.textContent=hm(m.ts);b.appendChild(mt);
   b.insertAdjacentHTML('beforeend','<span class="rxp" hidden></span>');
   press(b,()=>menu(m.id));b.ondblclick=()=>react(m.id,'❤️',b);
-  tickEl(r);rxEl(r);box.appendChild(r);if(near||mine)scrollEnd()}
+  tickEl(r);rxEl(r);box.appendChild(r);if(!into&&(near||mine))scrollEnd()}
 async function addMsg(m,live){
-  if(seen.has(m.id))return;seen.add(m.id);msgs.push(m);
-  const p=await payload(m);paint(m,p);if(live&&m.from!=me.id&&love(p))burst()}
+  if(seen.has(m.id))return;seen.add(m.id);
+  const p=await payload(m);if(m.from==me.id?m.to!=cur:m.from!=cur){seen.delete(m.id);return}   // chat changed while decrypting
+  msgs.push(m);cacheMsg(cur,m);paint(m,p);if(live&&m.from!=me.id&&love(p))burst()}
 
 function menu(id){
   const m=msgs.find(x=>x.id==id);if(!m||m.pending)return;const p=pl.get(id),mine=m.from==me.id;
@@ -536,18 +558,18 @@ async function upMedia(bytes){
   if(r.status==401){leave();throw new Error('auth')}
   const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Upload failed');return d.key}
 async function deliver(kind,p,bytes,local,to){
-  const peer=to||cur,show=peer==cur,m={id:'t'+(++tc),from:me.id,to:peer,kind,ts:new Date().toISOString(),media:kind!='text',rx:{},r:false,pending:true};
+  const peer=to||cur,show=peer==cur,m={id:'t'+Math.random().toString(36).slice(2,8)+(++tc),from:me.id,to:peer,kind,ts:new Date().toISOString(),media:kind!='text',rx:{},r:false,pending:true};
   const drop=()=>{const i=msgs.indexOf(m);if(i>-1)msgs.splice(i,1)};
   pl.set(m.id,p);if(local)urls[m.id]=local;seen.add(m.id);if(show){msgs.push(m);paint(m,p)}
   try{
-    const s=await seal(peer,enc.encode(JSON.stringify(p))),body={to:peer,kind,iv:s.iv,ct:b64(s.ct)};
+    const s=await seal(peer,enc.encode(JSON.stringify(p))),body={to:peer,kind,iv:s.iv,ct:b64(s.ct),tmp:m.id};
     if(bytes){const sb=await seal(peer,bytes);body.bIv=sb.iv;body.bkey=await upMedia(sb.ct)}   // encrypted file goes to the bucket, never to Mongo
     const real=await api('/api/messages','POST',body),el=$('m'+m.id);
     pl.set(real.id,p);if(urls[m.id])urls[real.id]=urls[m.id];
     if(seen.has(real.id)){el?.remove();drop()}
     else{seen.add(real.id);Object.assign(m,real);m.pending=false;if(el){el.id='m'+real.id;tickEl(el)}}
-    setLast(peer,real,0).then(renderList);
-  }catch(e){$('m'+m.id)?.remove();drop();toast('Not sent: '+e.message)}
+    cacheMsg(peer,m);setLast(peer,real,0).then(renderList);
+  }catch(e){$('m'+m.id)?.remove();drop();seen.delete(m.id);toast('Not sent: '+e.message)}
 }
 function sendText(){
   if(!cur)return;if(cur=='ai')return F.aiSend($('txt').value);F.typingStop();const v=$('txt').value.trim(),t=v||'❤️';$('txt').value='';grow();
@@ -716,6 +738,7 @@ const sGrp=(h,f='')=>`<div class="sg">${h}</div>${f?`<div class="sf">${f}</div>`
 const sRow=(ic,bg,t,{sub='',val='',a='',red=0,chev=1}={})=>`<button class="sr${chev?' ch':''}${red?' red':''}" data-a="${a}"><span class="si" style="background:${bg}">${ic}</span><span class="st">${t}${sub?`<small>${sub}</small>`:''}</span>${val?`<span class="sv2">${val}</span>`:''}</button>`;
 const sSw=(ic,bg,t,k,{sub='',on=false,dis=false}={})=>`<label class="sr"><span class="si" style="background:${bg}">${ic}</span><span class="st">${t}${sub?`<small>${sub}</small>`:''}</span><input type="checkbox" class="ios" data-k="${k}"${on?' checked':''}${dis?' disabled':''}></label>`;
 let setPg='main';
+const CALLNOTE='🔐 Voice calls are end-to-end encrypted. The call setup is sealed with your chat keys, so not even the Lynko server can read it or swap it, and the audio is encrypted phone-to-phone.';
 function setHtml(){
   const top=(back)=>`<div class="stb">${back?'<button data-a="back">‹ Settings</button>':'<span></span>'}<button data-a="done">Done</button></div>`;
   if(setPg=='lock'){
@@ -729,14 +752,13 @@ function setHtml(){
   const ns=F.notifState(),nv=ns=='granted'?'On':ns=='denied'?'Blocked':ns=='unsupported'?'Not supported':'Off';
   const rs=F.relayState();   // null = still checking, false = server has no relay, true = available
   return top(0)+'<h1>Settings</h1>'
-    +`<div class="sg"><button class="sr prof" data-a="profile"><span id="spav"></span><span class="st"><b id="spn"></b><small id="spa"></small></span></button></div><div class="sf"></div>`
+    +`<div class="sg"><button class="sr prof" data-a="profile"><span id="spav"></span><span class="st"><b id="spn"></b><small id="spa"></small></span></button></div><div style="height:12px"></div>`
     +sGrp(sRow('🔒','#ff5c8a','Chat lock',{a:'lock',val:LOCK.chat.hasCode()?'On':'Off'})
       +sSw('👁','#34c759','Hide last seen &amp; online','seen',{on:!!me.hideSeen,sub:'If hidden, you can’t see others’ either'})
       +`<label class="sr"><span class="si" style="background:#ff9f0a">⏱</span><span class="st">Lock app</span><select data-k="after"><option value="now">Right away</option><option value="1m">After 1 minute</option><option value="10m">After 10 minutes</option></select></label>`
       +sSw('🫥','#5856d6','Hide app preview','shield',{on:LOCK.shield.get(),sub:'Blank screen in the app switcher'}),
       'Your password is asked again whenever you come back to the app.')
-    +sGrp(sSw('🛡','#0a84ff','Protect IP address in calls','relay',{on:F.relayGet()&&rs!==false,dis:rs!==true,sub:rs===true?'Relays calls through Lynko so your IP stays hidden':rs===false?'Not available — the server has no relay (TURN) set up':'Checking…'}),
-      '🔐 Voice calls are end-to-end encrypted. The call setup is sealed with your chat keys, so not even the Lynko server can read it or swap it, and the audio is encrypted phone-to-phone.')
+    +(rs===true?sGrp(sSw('🛡','#0a84ff','Protect IP address in calls','relay',{on:F.relayGet(),sub:'Relays calls through Lynko so your IP stays hidden'}),CALLNOTE):`<div class="sf">${CALLNOTE}</div>`)   // row only appears when the server really has a relay (no more \"not available\" error text)
     +sGrp(sRow('🔔','#ff3b30','Notifications',{a:'notif',val:nv})
       +sRow('🖼','#32ade6','Wallpaper',{a:'wall'})
       +(F.cfgAi()?sSw('✨','#af52de','Lynko AI','ai',{on:F.aiOn(),sub:'Not end-to-end encrypted'}):'')
@@ -745,14 +767,14 @@ function setHtml(){
 }
 function settings(pg){
   setPg=pg||'main';let o=$('setov');
-  if(!o){o=document.createElement('div');o.id='setov';o.className='setov';document.body.appendChild(o);o.addEventListener('click',onSetClick);o.addEventListener('change',onSetChange)}
+  if(!o){o=document.createElement('div');o.id='setov';o.className='setov';document.body.appendChild(o);o.addEventListener('click',onSetClick);o.addEventListener('change',onSetChange);history.pushState({set:1},'')}   // phone Back button closes Settings
   const y=o.scrollTop;o.innerHTML=setHtml();o.scrollTop=pg?0:y;
   const sel=o.querySelector('select[data-k=after]');if(sel)sel.value=LOCK.after();
   if(o.querySelector('.prof')){$('spav').innerHTML=av(me);$('spn').textContent=me.username;$('spa').textContent=me.about||(me.phone?'+'+me.phone:'Hey there! I’m using Lynko')}
   if(setPg=='main'&&F.relayState()===null)F.relayAvail().then(()=>{if($('setov')&&setPg=='main')settings()})}
 async function onSetClick(e){
   const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a,o=$('setov');
-  if(a=='done')o.remove();
+  if(a=='done')history.back();
   else if(a=='back')settings('main');
   else if(a=='lock')settings('lock');
   else if(a=='profile')profile();
@@ -775,7 +797,10 @@ async function onSetChange(e){
 
 // ── menus ──
 $('meb').onclick=()=>settings();$('addb').onclick=addContact;
-$('q').oninput=e=>{const raw=e.target.value.trim();qs=raw.toLowerCase();renderList();clearTimeout(qT);qT=setTimeout(()=>codeCheck(raw),500)};
+$('q').value='';   // browsers restore / autofill form fields after reload: always start with an empty search
+$('q').oninput=e=>{const q=e.target;if(q.value&&document.activeElement!==q){q.value='';qs='';renderList();return}   // text the browser pasted in by itself (autofill) is not a search
+  const raw=q.value.trim();qs=raw.toLowerCase();renderList();clearTimeout(qT);qT=setTimeout(()=>codeCheck(raw),500)};
+addEventListener('pageshow',e=>{if(e.persisted&&$('q').value){$('q').value='';qs='';renderList()}});
 $('q').addEventListener('keydown',e=>{if(e.key=='Enter'){clearTimeout(qT);codeCheck(e.target.value.trim())}});
 document.querySelectorAll('#chips button').forEach(b=>b.onclick=()=>{flt=b.dataset.f;document.querySelectorAll('#chips button').forEach(x=>x.classList.toggle('on',x==b));renderList()});
 $('n1').onclick=()=>{if(tab!='chats')setTab('chats');else $('list').scrollTo({top:0,behavior:'smooth'})};$('n4').onclick=()=>setTab('status');$('n5').onclick=()=>setTab('calls');$('n2').onclick=wallpaper;$('n3').onclick=()=>settings();
@@ -793,9 +818,11 @@ document.addEventListener('visibilitychange',()=>{
   let cfg;try{[me,cfg]=await Promise.all([api('/api/me'),api('/api/config')])}catch{return}
   priv=await crypto.subtle.importKey('jwk',JSON.parse(pj),{name:'ECDH',namedCurve:'P-256'},false,['deriveKey']);
   contacts=new Map(me.contacts.map(c=>[c.id,c]));paintMe();applyWp();renderList();loadChats().catch(()=>{});loadStatuses().catch(()=>{});loadOfficial().catch(()=>{});
+  if(typeof Pusher==='undefined')await new Promise(r=>{const e=$('pjs');if(!e)return r();e.addEventListener('load',r);e.addEventListener('error',r);setTimeout(r,5000)});
   if(typeof Pusher==='undefined')return;   // offline: show saved chats only
   const ps=new Pusher(cfg.key,{cluster:cfg.cluster,channelAuthorization:{endpoint:'/api/pusher/auth'}}),ch=ps.subscribe('private-u-'+me.id);
   ch.bind('msg',async d=>{
+    if(d.from==me.id&&d.tmp&&seen.has(d.tmp))return;   // the send call finishes that bubble itself
     const peer=d.from==me.id?d.to:d.from;
     if(!contacts.has(peer)){await loadContacts();keys={}}
     if(!d.ct){peer==cur?pull():loadChats();return}
@@ -804,7 +831,7 @@ document.addEventListener('visibilitychange',()=>{
     if(live){await addMsg(d,true);if(d.from!=me.id)markRead()}
     else if(d.from!=me.id&&peer!=cur)navigator.vibrate?.(20);
     if(!live&&d.from!=me.id)F.notify(peer,d);renderList()});
-  ch.bind('del',d=>{const i=msgs.findIndex(m=>m.id==d.id);if(i>-1)msgs.splice(i,1);$('m'+d.id)?.remove();loadChats().catch(()=>{})});
+  ch.bind('del',d=>{const i=msgs.findIndex(m=>m.id==d.id);if(i>-1)msgs.splice(i,1);$('m'+d.id)?.remove();mcache.forEach((a,k)=>mcache.set(k,a.filter(m=>m.id!=d.id)));loadChats().catch(()=>{})});
   ch.bind('read',d=>{msgs.forEach(m=>{if(m.from==me.id&&m.to==d.by&&!m.r){m.r=true;tickEl($('m'+m.id))}});const c=chats.get(d.by);if(c&&c.m.from==me.id)c.m.r=true;renderList()});
   ch.bind('rx',d=>{setRx(d.id,d.rx);if(d.by!=me.id&&d.rx[d.by]=='❤️'){const r=$('m'+d.id)?.getBoundingClientRect();if(r)burst(r.left+r.width/2,r.top)}});
   ch.bind('typing',F.typingEvent);
