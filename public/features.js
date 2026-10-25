@@ -63,11 +63,14 @@ function typingEvent(d) {
 }
 
 // ───────────────────────── notifications ─────────────────────────
-const notifOK = () => 'Notification' in window && 'serviceWorker' in navigator;
+const NATIVE = !!window.LynkoApp;   // inside the Android app: notifications come from the app itself
+const notifOK = () => NATIVE || ('Notification' in window && 'serviceWorker' in navigator);
+const perm = () => NATIVE ? (LynkoApp.hasPerm() ? 'granted' : 'default') : Notification.permission;
 const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent), standalone = matchMedia('(display-mode:standalone)').matches || navigator.standalone;
 const b64u = s => { const p = '='.repeat((4 - s.length % 4) % 4), r = atob((s + p).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(r, c => c.charCodeAt(0)) };
 async function pushSub() {
-  if (!notifOK() || !cfg.vapid || Notification.permission != 'granted' || !('PushManager' in window)) return;
+  if (NATIVE) return;
+  if (!notifOK() || !cfg.vapid || perm() != 'granted' || !('PushManager' in window)) return;
   try {
     const reg = await navigator.serviceWorker.ready;
     let sub = await reg.pushManager.getSubscription();
@@ -80,6 +83,7 @@ async function pushSub() {
   } catch (e) { console.warn('push', e.message) }
 }
 async function notifOn() {
+  if (NATIVE) { if (LynkoApp.hasPerm()) { toast('Notifications are on ♥'); try { LynkoApp.notify('LYNKO CHAT', 'Notifications are working ♥', 'test') } catch {} } else { LynkoApp.askPerm(); toast('Allow notifications, then tap again') } return nbar() }
   if (!notifOK()) return toast('This browser can’t show notifications');
   if (isIOS && !standalone) return toast('iPhone: tap Share → Add to Home Screen, then open the app from there');
   const r = await Notification.requestPermission();
@@ -89,10 +93,11 @@ async function notifOn() {
 }
 function nbar() {
   const b = $('nbar'); if (!b) return;
-  b.hidden = !(notifOK() && Notification.permission == 'default' && !localStorage.getItem('nb_x'));
+  b.hidden = !(notifOK() && perm() == 'default' && !localStorage.getItem('nb_x'));
 }
 async function showOS(title, body, tag, url) {
-  if (!notifOK() || Notification.permission != 'granted') return;
+  if (NATIVE) { try { LynkoApp.notify(title, body || '', tag || '') } catch {} return }
+  if (!notifOK() || perm() != 'granted') return;
   try { const reg = await navigator.serviceWorker.ready;
     reg.showNotification(title, { body, tag, renotify: true, icon: '/icons/icon-192.png', badge: '/icons/icon-192.png', data: { url }, vibrate: [200, 100, 200] }) } catch {}
 }
@@ -108,7 +113,7 @@ async function notify(peer, d) {
   const lk = LOCK.chat.has(peer);   // locked chats never show a name or text
   let text = 'New message';
   if (!lk) try { const p = await payload(d); text = pvText(p) } catch {}
-  if (document.hidden) { showOS(lk ? 'LYNKO CHAT' : nm(peer), lk ? 'You have a new message' : 'New message', lk ? 'lk' : 'm' + peer, '/chat?c=' + peer); return }
+  if (document.hidden || (NATIVE && LynkoApp.bg())) { showOS(lk ? 'LYNKO CHAT' : nm(peer), lk ? 'You have a new message' : 'New message', lk ? 'lk' : 'm' + peer, '/chat?c=' + peer); return }
   if (peer != cur) { beep(880, .12); banner(lk ? 'LYNKO CHAT' : nm(peer), lk ? 'You have a new message' : text, () => openChat(peer)) }
 }
 
@@ -463,5 +468,5 @@ function init(o) {
 }
 
 window.F = { inCall: () => Call.st != 'idle', init, pres, seenLoad, typingInput, typingStop, typingEvent, notify, hdr, notifOn, nbar,
-  callStart, loadCalls, renderCalls, aiOn, aiShown, aiItem, openAI, aiSend, aiClear, aiToggle, relayAvail, relayGet, relaySet, relayState: () => relayOK, cfgAi: () => !!cfg.ai, notifState: () => (notifOK() ? Notification.permission : 'unsupported'), ping };
+  callStart, loadCalls, renderCalls, aiOn, aiShown, aiItem, openAI, aiSend, aiClear, aiToggle, relayAvail, relayGet, relaySet, relayState: () => relayOK, cfgAi: () => !!cfg.ai, notifState: () => (notifOK() ? perm() : 'unsupported'), ping };
 })();
