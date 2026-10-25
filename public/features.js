@@ -128,8 +128,8 @@ function callUI(state) {
   const c = contacts.get(Call.peer) || { id: Call.peer, username: '?' };
   o.querySelector('.cav').innerHTML = av(c, 'big'); $('cnm').textContent = c.username;
   const b = $('cbt');
-  if (state == 'incoming') b.innerHTML = '<button class="cb no" id="cno">✕<small>Decline</small></button><button class="cb ok" id="cok">📞<small>Accept</small></button>';
-  else b.innerHTML = `<button class="cb mu${Call.muted ? ' on' : ''}" id="cmu">${Call.muted ? '🔇' : '🎙'}<small>${Call.muted ? 'Unmute' : 'Mute'}</small></button><button class="cb no" id="cend">📞<small>End</small></button>`;
+  if (state == 'incoming') b.innerHTML = '<button class="cbn no" id="cno">✕<small>Decline</small></button><button class="cbn ok" id="cok">📞<small>Accept</small></button>';
+  else b.innerHTML = `<button class="cbn mu${Call.muted ? ' on' : ''}" id="cmu">${Call.muted ? '🔇' : '🎙'}<small>${Call.muted ? 'Unmute' : 'Mute'}</small></button><button class="cbn no" id="cend">📞<small>End</small></button>`;
   if ($('cno')) { $('cno').onclick = () => callReject(); $('cok').onclick = () => callAccept() }
   if ($('cend')) $('cend').onclick = () => callEnd();
   if ($('cmu')) $('cmu').onclick = () => { Call.muted = !Call.muted; Call.stream?.getAudioTracks().forEach(t => t.enabled = !Call.muted); callUI(Call.st) };
