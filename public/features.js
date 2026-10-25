@@ -415,12 +415,21 @@ async function aiSend(text) {
     const r = await fetch('/api/ai', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: hist }) });
     if (r.status == 401) { leave(); return }
     if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || 'AI error') }
-    const rd = r.body.getReader(), dc = new TextDecoder(); let acc = '';
-    for (;;) { const { done, value } = await rd.read(); if (done) break; acc += dc.decode(value, { stream: true }); if (cur == 'ai') { el.textContent = acc; scrollEnd() } }
-    am.t = acc.trim() || '…'; am.ts = Date.now(); aiMsgs.push(am); if (cur == 'ai') { el.textContent = ''; linkify(el, am.t) }
+    // the text arrives in bursts; show it with a smooth typing flow instead of jumping (speeds up when it falls behind)
+    const rd = r.body.getReader(), dc = new TextDecoder(); let acc = '', shown = 0, end = false, fin;
+    const finished = new Promise(r => fin = r);
+    const tick = () => {
+      if (shown < acc.length) { shown = Math.min(acc.length, shown + Math.max(1, Math.ceil((acc.length - shown) / 10))); if (cur == 'ai') { el.textContent = aiClean(acc.slice(0, shown)); scrollEnd() } }
+      if (end && shown >= acc.length) fin(); else requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+    try { for (;;) { const { done, value } = await rd.read(); if (done) break; acc += dc.decode(value, { stream: true }) } } finally { end = true }
+    await finished;
+    am.t = aiClean(acc).trim() || '…'; am.ts = Date.now(); aiMsgs.push(am); if (cur == 'ai') { el.textContent = ''; linkify(el, am.t) }
   } catch (e) { el.parentElement.parentElement.remove(); toast(e.message) }
   aiSave(); aiBusy = false; if (cur == 'ai') { $('hs').className = ''; $('hs').textContent = 'AI assistant · not end-to-end encrypted' } renderList();
 }
+const aiClean = t => String(t).replace(/\*\*(.+?)\*\*/gs, '$1').replace(/^#{1,6}\s+/gm, '').replace(/`+/g, '').replace(/^\s*[-*]\s+/gm, '• ');   // models like markdown; this chat is plain text
 function aiClear() { aiMsgs = []; aiSave(); if (cur == 'ai') aiRender(); renderList(); toast('AI chat cleared') }
 function aiToggle(on) {
   localStorage.setItem(AIO(), on ? '1' : '0');
