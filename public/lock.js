@@ -32,7 +32,7 @@ const clear = k => localStorage.removeItem(tryKey(k));
 let locked = false, resolveReady;
 const ready = new Promise(r => resolveReady = r);
 const style = document.createElement('style');
-style.textContent = `#lockov{position:fixed;inset:0;z-index:1000;background:radial-gradient(900px 700px at 50% 0%,#4a0f3a,#14040f);display:flex;align-items:center;justify-content:center;padding:24px}
+style.textContent = `#lockov{position:fixed;top:0;right:0;bottom:0;left:0;z-index:1000;background:radial-gradient(900px 700px at 50% 0%,#4a0f3a,#14040f);display:flex;align-items:center;justify-content:center;padding:24px}
 #lockov[hidden]{display:none}.lkc{width:min(100%,360px);text-align:center;display:grid;gap:12px}
 .lkc .lklogo{font:italic 700 40px 'Fraunces',serif;color:#fff}.lkc .lklogo i{color:#ff5c8a;font-style:normal}
 .lkc .lkav{width:84px;height:84px;border-radius:50%;margin:6px auto 0;display:grid;place-items:center;font-size:36px;font-weight:700;color:#fff;background:linear-gradient(135deg,#ff5c8a,#c14bff)}
