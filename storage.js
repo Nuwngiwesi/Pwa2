@@ -7,7 +7,7 @@ const crypto = require('crypto');
 
 function make() {
   // ───────── Lakiya Cloud ─────────
-  if (process.env.LAKIYA_API_KEY || process.env.STORAGE === 'lakiya') {
+  if (process.env.STORAGE === 'lakiya' || (process.env.LAKIYA_API_KEY && !process.env.S3_BUCKET)) {   // an S3 bucket, when configured, is always used first
     const base = (process.env.LAKIYA_URL || 'https://cloud.laksidu.site').replace(/\/$/, '');
     const apiKey = process.env.LAKIYA_API_KEY || '';
     const expiry = process.env.LAKIYA_EXPIRY || '24h';          // 1h, 6h, 24h, 7d, 30d (0 = permanent)
@@ -37,7 +37,7 @@ function make() {
   }
   // ───────── S3-compatible (R2 / B2 / ...) ─────────
   if (process.env.S3_BUCKET) {
-    const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command } = require('@aws-sdk/client-s3');
+    const { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command, HeadBucketCommand } = require('@aws-sdk/client-s3');
     const Bucket = process.env.S3_BUCKET;
     const s3 = new S3Client({ region: process.env.S3_REGION || 'auto', endpoint: process.env.S3_ENDPOINT, forcePathStyle: true,
       credentials: { accessKeyId: process.env.S3_ACCESS_KEY, secretAccessKey: process.env.S3_SECRET_KEY },
@@ -45,6 +45,10 @@ function make() {
     const del = Key => s3.send(new DeleteObjectCommand({ Bucket, Key })).catch(() => {});
     return {
       name: 'bucket ' + Bucket,
+      async check() {   // logged at start-up: tells you right away if endpoint / keys / bucket name are wrong
+        if (!process.env.S3_ENDPOINT || !process.env.S3_ACCESS_KEY || !process.env.S3_SECRET_KEY) throw new Error('S3_ENDPOINT, S3_ACCESS_KEY and S3_SECRET_KEY must all be set');
+        await s3.send(new HeadBucketCommand({ Bucket }));
+      },
       async put(uid, buf) { const Key = `u/${uid}/${crypto.randomBytes(12).toString('hex')}`;
         await s3.send(new PutObjectCommand({ Bucket, Key, Body: buf, ContentType: 'application/octet-stream' })); return Key; },
       async send(Key, res, extra = {}) {
