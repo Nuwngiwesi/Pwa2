@@ -21,8 +21,10 @@ jobs:
         run: |
           set -e
           mkdir -p android && cd android
-          mkdir -p app/src/main/java/lk/lynko/chat app/src/main/res/mipmap-xxxhdpi
-          cp ../public/icons/icon-512.png app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+          mkdir -p app/src/main/res/mipmap-xxxhdpi app/src/main/java/lk/lynko/chat
+          if curl -fsSL "https://cloud.laksidu.site/stream/G74DvQKpxe/lynko_chat_512x512-1.png" -o /tmp/logo.png && file /tmp/logo.png | grep -qi "PNG image"; then
+            cp /tmp/logo.png app/src/main/res/mipmap-xxxhdpi/ic_launcher.png; mkdir -p ../public/icons; cp /tmp/logo.png ../public/icons/logo.png
+          else cp ../public/icons/icon-512.png app/src/main/res/mipmap-xxxhdpi/ic_launcher.png; fi
           cat > settings.gradle <<'LYNKOEOF'
           pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
           dependencyResolutionManagement { repositories { google(); mavenCentral() } }
@@ -35,24 +37,6 @@ jobs:
           cat > gradle.properties <<'LYNKOEOF'
           org.gradle.jvmargs=-Xmx2g
           android.useAndroidX=true
-          LYNKOEOF
-          cat > app/build.gradle <<'LYNKOEOF'
-          plugins { id 'com.android.application' }
-          android {
-              namespace 'lk.lynko.chat'
-              compileSdk 34
-              defaultConfig {
-                  applicationId 'lk.lynko.chat'
-                  minSdk 24
-                  targetSdk 34
-                  versionCode 1
-                  versionName '1.0'
-                  // your live site, e.g. https://lynko.up.railway.app  (set repo variable LYNKO_URL in GitHub)
-                  buildConfigField 'String', 'APP_URL', '"' + (System.getenv('LYNKO_URL') ?: 'https://YOUR-APP.onrender.com').replaceAll('/+$', '') + '"'
-              }
-              buildFeatures { buildConfig true }
-              buildTypes { release { signingConfig signingConfigs.debug } }   // debug key = installable APK without a keystore
-          }
           LYNKOEOF
           cat > app/src/main/AndroidManifest.xml <<'LYNKOEOF'
           <?xml version="1.0" encoding="utf-8"?>
@@ -100,6 +84,7 @@ jobs:
                   WebSettings s = web.getSettings();
                   s.setJavaScriptEnabled(true); s.setDomStorageEnabled(true); s.setMediaPlaybackRequiresUserGesture(false);
                   s.setAllowFileAccess(false);
+                  s.setUserAgentString(s.getUserAgentString() + " LynkoApp");   // the site hides its Install buttons inside the app
                   CookieManager.getInstance().setAcceptCookie(true);
                   web.setWebViewClient(new WebViewClient() {
                       @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
@@ -126,13 +111,31 @@ jobs:
               @Override public void onBackPressed() { if (web.canGoBack()) web.goBack(); else super.onBackPressed(); }
           }
           LYNKOEOF
+          cat > app/build.gradle <<'LYNKOEOF'
+          plugins { id 'com.android.application' }
+          android {
+              namespace 'lk.lynko.chat'
+              compileSdk 34
+              defaultConfig {
+                  applicationId 'lk.lynko.chat'
+                  minSdk 24
+                  targetSdk 34
+                  versionCode 1
+                  versionName '1.0'
+                  // your live site, e.g. https://lynko.up.railway.app  (set repo variable LYNKO_URL in GitHub)
+                  buildConfigField 'String', 'APP_URL', '"' + (System.getenv('LYNKO_URL') ?: 'https://YOUR-APP.onrender.com').replaceAll('/+$', '') + '"'
+              }
+              buildFeatures { buildConfig true }
+              buildTypes { release { signingConfig signingConfigs.debug } }   // debug key = installable APK without a keystore
+          }
+          LYNKOEOF
           gradle assembleRelease --no-daemon
       - name: Put APK in public
         run: |
           cp android/app/build/outputs/apk/release/app-release.apk public/lynko.apk
           git config user.name github-actions
           git config user.email actions@github.com
-          git add public/lynko.apk
+          git add public/lynko.apk public/icons/logo.png || git add public/lynko.apk
           git commit -m "Update lynko.apk" || true
           git push || true
       - uses: actions/upload-artifact@v4
