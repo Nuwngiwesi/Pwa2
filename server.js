@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express'), crypto = require('crypto'), path = require('path'), compression = require('compression');
 const bcrypt = require('bcryptjs'), jwt = require('jsonwebtoken'), Pusher = require('pusher');
 const { MongoClient, ObjectId } = require('mongodb');
+const https = require('https');
 
 const SECRET = process.env.SESSION_SECRET;
 const MK = Buffer.from(process.env.MESSAGE_KEY || '', 'base64');
@@ -10,7 +11,8 @@ if (MK.length !== 32) { console.error('✖ MESSAGE_KEY must be 32 random bytes i
 if (SECRET.length < 32) console.warn('⚠ SESSION_SECRET is short — use 32+ random characters');
 if (process.env.ADMIN_PASS && process.env.ADMIN_PASS.length < 12) console.warn('⚠ ADMIN_PASS is weak — use 12+ characters');
 const pusher = new Pusher({ appId: process.env.PUSHER_APP_ID, key: process.env.PUSHER_KEY,
-  secret: process.env.PUSHER_SECRET, cluster: process.env.PUSHER_CLUSTER, useTLS: true });
+  secret: process.env.PUSHER_SECRET, cluster: process.env.PUSHER_CLUSTER, useTLS: true, timeout: 8000,
+  agent: new https.Agent({ keepAlive: true, maxSockets: 64 }) });   // reuse the connection: realtime events leave ~150 ms sooner
 
 const C = {};   // collections shared with admin.js (filled once Mongo is connected)
 const store = require('./storage');
@@ -123,7 +125,8 @@ app.get('/chat', page('chat.html'));
 app.get('/sw.js', (q, r) => { r.set('Cache-Control', 'no-cache'); r.type('js').sendFile(path.join(__dirname, 'public/sw.js')); });
 app.get('/features.js', (q, r) => { r.set('Cache-Control', 'no-cache'); r.type('js').sendFile(path.join(__dirname, 'public/features.js')); });
 app.get('/icons/:name', require('./icons'));   // LYNKO CHAT logo -> app icons
-app.use(express.static(path.join(__dirname, 'public'), { maxAge: '7d', index: false }));
+app.use(express.static(path.join(__dirname, 'public'), { maxAge: '7d', index: false,
+  setHeaders: (r, f) => { if (/\.(js|json|html)$/.test(f)) r.set('Cache-Control', 'no-cache'); } }));   // lock.js / install.js fixes reach everyone at once
 app.get('/api/config', (q, r) => r.json({ turnstile: TS_SITE && TS_SECRET ? TS_SITE : null, key: process.env.PUSHER_KEY, cluster: process.env.PUSHER_CLUSTER, cc: CC, vapid: webpush ? process.env.VAPID_PUBLIC_KEY : null, ai: !!GROQ_KEY }));
 
 // ── accounts ──
@@ -210,20 +213,34 @@ app.post('/api/media', auth, express.raw({ type: 'application/octet-stream', lim
   if (!Buffer.isBuffer(req.body) || req.body.length < 29) return res.status(400).json({ error: 'Empty file' });
   mon.count('media'); res.json({ key: await store.put(req.u.id, req.body) });
 });
+// sender->receiver pairs already known to exist + linked as contacts: skips 3 DB round-trips on every message after the first
+const linked = new Set();
 app.post('/api/messages', auth, async (req, res) => {
-  const { to, kind, iv, ct, bIv, bkey } = req.body || {};
+  const { kind, iv, ct, bIv, bkey, tmp } = req.body || {}, to = String((req.body || {}).to || ''), me = req.u.id;
   if (!['text', 'img', 'vid'].includes(kind) || !iv || !ct || String(ct).length > 40000) return res.status(400).json({ error: 'Bad message' });
-  if (!(await U.findOne({ id: String(to) }, { projection: { _id: 1 } }))) return res.status(404).json({ error: 'User not found' });
-  const doc = { conv: conv(req.u.id, to), from: req.u.id, to: String(to), kind, iv, ct: seal(Buffer.from(ct, 'base64')), createdAt: new Date() };
+  const pair = me + '>' + to, known = linked.has(pair);
+  if (!known && !(await U.findOne({ id: to }, { projection: { _id: 1 } }))) return res.status(404).json({ error: 'User not found' });
+  const cbuf = Buffer.from(ct, 'base64'), _id = new ObjectId(), now = new Date();
+  const doc = { _id, conv: conv(me, to), from: me, to, kind, iv, ct: seal(cbuf), createdAt: now };
   if (kind !== 'text') {
-    if (!mine(req.u.id, bkey) || !bIv) return res.status(400).json({ error: 'Missing media' });
+    if (!mine(me, bkey) || !bIv) return res.status(400).json({ error: 'Missing media' });
     Object.assign(doc, { bkey, bIv: String(bIv) });
   }
-  const [r] = await Promise.all([M.insertOne(doc),
-    U.updateOne({ id: req.u.id }, { $addToSet: { contacts: doc.to } }), U.updateOne({ id: doc.to }, { $addToSet: { contacts: req.u.id } })]);
-  mon.count('msg'); const m = out({ ...doc, _id: r.insertedId });
-  fire([req.u.id, doc.to], 'msg', m.ct.length < 6000 ? m : { id: m.id, from: m.from, to: m.to });   // ciphertext rides inside the event = instant
-  push(doc.to, { type: 'msg', title: req.u.u, body: kind === 'text' ? 'New message' : kind === 'img' ? '📷 Photo' : '🎥 Video', tag: 'm' + req.u.id, from: req.u.id });
+  const m = { id: _id.toString(), from: me, to, kind, iv, bIv: doc.bIv || null, ct: cbuf.toString('base64'), media: !!doc.bkey, r: false, rx: {}, ts: now.toISOString() };
+  if (typeof tmp === 'string' && /^t[\w]{3,24}$/.test(tmp)) m.tmp = tmp;   // lets the sender's own phone match this event to its pending bubble
+  const small = m.ct.length < 6000, evt = small ? m : { id: m.id, from: m.from, to: m.to };
+  // small messages (all text) are pushed to the receiver IMMEDIATELY, in parallel with the database write
+  if (small) fire([me, to], 'msg', evt);
+  try {
+    await Promise.all([M.insertOne(doc), ...(known ? [] : [U.updateOne({ id: me }, { $addToSet: { contacts: to } }), U.updateOne({ id: to }, { $addToSet: { contacts: me } })])]);
+  } catch (e) {
+    if (small) fire([me, to], 'del', { id: m.id });   // write failed: take the early message back
+    throw e;
+  }
+  if (!known) { if (linked.size > 1e5) linked.clear(); linked.add(pair); }
+  mon.count('msg');
+  if (!small) fire([me, to], 'msg', evt);   // big (media) events carry no ciphertext: receivers fetch it, so only announce after it is saved
+  push(to, { type: 'msg', title: req.u.u, body: kind === 'text' ? 'New message' : kind === 'img' ? '📷 Photo' : '🎥 Video', tag: 'm' + me, from: me });
   res.json(m);
 });
 app.get('/api/blob/:id', auth, async (req, res) => {
@@ -438,7 +455,7 @@ app.use((e, q, r, n) => {
 });
 
 (async () => {
-  const cl = await MongoClient.connect(process.env.MONGODB_URI);
+  const cl = await MongoClient.connect(process.env.MONGODB_URI, { maxPoolSize: 20, minPoolSize: 3, w: 1, retryWrites: true });   // w:1 = the server answers as soon as the primary has saved it
   const db = cl.db(process.env.MONGODB_DB || 'lynko');
   U = db.collection('users'); M = db.collection('messages'); S = db.collection('statuses'); K = db.collection('calls');
   Object.assign(C, { db, U, M, S, E: db.collection('errors'), D: db.collection('stats'), O: db.collection('official') });
