@@ -1,6 +1,6 @@
 // LYNKO CHAT service worker — app shell + last-seen chats work offline.
 // Cached API data is the same ENCRYPTED data the server sends; it is wiped on logout.
-const SHELL = 'lynko-shell-v7', API = 'lynko-api-v2', EXT = 'lynko-ext-v2';
+const SHELL = 'lynko-shell-v8', API = 'lynko-api-v2', EXT = 'lynko-ext-v2';
 const PRE = ['/', '/chat', '/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png'];
 const READ = /^\/api\/(me|config|chats|messages|statuses|official|dp\/|blob\/|status\/)/;
 const IMMUTABLE = /^\/api\/(blob\/|dp\/|status\/[^/]+\/blob)/;   // media never changes -> cache first
@@ -76,7 +76,7 @@ self.addEventListener('fetch', e => {
     return;
   }
   // pages & static files: network first, saved copy when offline
-  e.respondWith(fetch(req).then(res => {
+  e.respondWith(fetch(req, { cache: 'no-cache' }).then(res => {   // always revalidate: an old copy in the browser cache can never hide a new deploy
     if (res.ok) { const copy = res.clone(); caches.open(SHELL).then(c => c.put(req, copy)); }
     return res;
   }).catch(async () => (await caches.match(req)) || (req.mode === 'navigate' ? await caches.match('/chat') : Response.error())));
