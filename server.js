@@ -197,6 +197,12 @@ app.post('/api/contacts', auth, async (req, res) => {
 });
 
 // ── profile: DP + about ──
+let sharp = null; try { sharp = require('sharp'); } catch { console.warn('⚠ sharp not available: profile images are stored as uploaded'); }
+// DP / banner: validate + shrink (progressive JPEG) so they load fast on mobile data
+const squash = async (b64, w, h, q) => {
+  const buf = Buffer.from(String(b64), 'base64'); if (!sharp) return buf;
+  return sharp(buf, { failOn: 'error' }).rotate().resize(w, h, { fit: 'cover' }).jpeg({ quality: q, progressive: true, mozjpeg: true }).toBuffer();
+};
 app.post('/api/profile', auth, async (req, res) => {
   const set = {};
   if (typeof req.body.about === 'string') set.about = req.body.about.slice(0, 120);
@@ -205,11 +211,13 @@ app.post('/api/profile', auth, async (req, res) => {
   if (typeof req.body.name === 'string') { newName = req.body.name.replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 30); if (newName) set.username = newName; }
   if (req.body.dp) {
     if (String(req.body.dp).length > 150000) return res.status(400).json({ error: 'Photo too large' });
-    set.dp = Buffer.from(req.body.dp, 'base64'); set.dpv = Date.now();
+    try { set.dp = await squash(req.body.dp, 256, 256, 80); } catch { return res.status(400).json({ error: 'That file is not a valid photo' }); }
+    set.dpv = Date.now();
   }
   if (req.body.banner) {
     if (String(req.body.banner).length > 260000) return res.status(400).json({ error: 'Banner too large' });
-    set.banner = Buffer.from(req.body.banner, 'base64'); set.bnv = Date.now();
+    try { set.banner = await squash(req.body.banner, 720, 240, 72); } catch { return res.status(400).json({ error: 'That file is not a valid image' }); }
+    set.bnv = Date.now();
   }
   await U.updateOne({ id: req.u.id }, { $set: set });
   const u = await U.findOne({ id: req.u.id }, { projection: { contacts: 1, about: 1, dpv: 1, bnv: 1 } });
@@ -217,17 +225,21 @@ app.post('/api/profile', auth, async (req, res) => {
   if (newName) give(res, { id: req.u.id, username: newName });   // refresh the login cookie with the new name
   res.json({ about: u.about, dpv: u.dpv, bnv: u.bnv || 0, username: newName || undefined });
 });
-app.get('/api/dp/:id', auth, async (req, res) => {
-  const u = await U.findOne({ id: req.params.id }, { projection: { dp: 1 } });
-  if (!u || !u.dp) return res.status(404).end();
-  res.set({ 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, max-age=31536000, immutable' }); res.send(raw(u.dp));
-});
-
-app.get('/api/banner/:id', auth, async (req, res) => {
-  const u = await U.findOne({ id: req.params.id }, { projection: { banner: 1 } });
-  if (!u || !u.banner) return res.status(404).end();
-  res.set({ 'Content-Type': 'image/jpeg', 'Cache-Control': 'private, max-age=31536000, immutable' }); res.send(raw(u.banner));
-});
+// DP + banner: the URL carries ?v=<version>, so a copy kept in memory can never be stale -> no database read after the first request
+const imgCache = new Map();
+const imgSend = field => async (req, res) => {
+  const v = /^\d{1,16}$/.test(String(req.query.v || '')) ? String(req.query.v) : '', key = field + ':' + req.params.id + ':' + v;
+  let buf = v ? imgCache.get(key) : null;
+  if (!buf) {
+    const u = await U.findOne({ id: String(req.params.id) }, { projection: { [field]: 1 } });
+    if (!u || !u[field]) return res.status(404).end();
+    buf = raw(u[field]);
+    if (v) { imgCache.set(key, buf); if (imgCache.size > 400) imgCache.delete(imgCache.keys().next().value); }
+  }
+  res.set({ 'Content-Type': 'image/jpeg', 'Content-Length': buf.length, 'Cache-Control': 'private, max-age=31536000, immutable' }); res.send(buf);
+};
+app.get('/api/dp/:id', auth, imgSend('dp'));
+app.get('/api/banner/:id', auth, imgSend('banner'));
 
 // ── messages (server only sees ciphertext) ──
 const out = m => ({ id: m._id.toString(), from: m.from, to: m.to, kind: m.kind, iv: m.iv, bIv: m.bIv || null,
