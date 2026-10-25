@@ -172,11 +172,12 @@ function pcMake(stream) {
 const mic = () => navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false });
 function callActive() {
   Call.st = 'active'; ringStop(); clearTimeout(Call.to); Call.t0 = Date.now(); callUI('active');
+  clearInterval(Call.hb); const cid = Call.cid; Call.hb = setInterval(() => { if (Call.cid == cid) post('/api/call', { type: 'hb', cid }).catch(() => {}) }, 25000);
   clearInterval(Call.tick); const t = () => callStatus(mmss(Math.round((Date.now() - Call.t0) / 1000))); t(); Call.tick = setInterval(t, 1000);
 }
 function callDone(msg, notifyPeer) {
   if (notifyPeer && Call.cid) post('/api/call', { type: 'end', cid: Call.cid }).catch(() => {});
-  ringStop(); clearTimeout(Call.to); clearInterval(Call.tick);
+  ringStop(); clearTimeout(Call.to); clearInterval(Call.tick); clearInterval(Call.hb);
   Call.pc?.close(); Call.stream?.getTracks().forEach(t => t.stop());
   Object.assign(Call, { st: 'idle', cid: null, peer: null, pc: null, stream: null, offer: null, muted: false, out: false });
   const o = $('callov'); if (o) { o.hidden = true; const a = $('rau'); if (a) a.srcObject = null }
