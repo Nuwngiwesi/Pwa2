@@ -47,7 +47,20 @@
     document.body.appendChild(o);
   }
 
+  const isAndroid = /android/i.test(ua);
   window.lynkoInstall = async function () {
+    if (isAndroid && !standalone) {            // Android: download the real APK (public/lynko.apk) when it exists
+      try {
+        const r = await fetch('/lynko.apk', { method: 'HEAD', cache: 'no-store' });
+        if (r.ok) {
+          const a = document.createElement('a'); a.href = '/lynko.apk'; a.download = 'LYNKO-CHAT.apk'; document.body.appendChild(a); a.click(); a.remove();
+          return sheet('APK eka download wenawa 📥', [
+            'Download eka iwara unata passe notification eka / Downloads eke <b>LYNKO-CHAT.apk</b> open karanna',
+            'Phone eka ahuwoth <b>Allow from this source</b> on karanna',
+            '<b>Install</b> thotanna — LYNKO CHAT app eka hadenawa ✅']);
+        }
+      } catch {}
+    }
     if (deferred) { deferred.prompt(); try { await deferred.userChoice; } catch {} deferred = null; return; }
     if (isIOS) return sheet('iPhone / iPad ekata install karanna', [
       'Safari eke me page eka open karanna (Chrome nam ⋯ → Open in Safari)',
