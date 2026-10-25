@@ -88,8 +88,8 @@ document.addEventListener('visibilitychange', () => {
 });
 addEventListener('pagehide', () => { sessionStorage.removeItem('lynko_priv') });   // closing the app forgets the unlocked key
 
-// ───────────── Locked chats (like WhatsApp) ─────────────
-const LKEY = () => 'lynko_locked:' + uid(), PKEY = () => 'lynko_cpin:' + uid();
+// ───────────── Locked chats (WhatsApp-style, opened with a SECRET CODE typed in the search bar) ─────────────
+const LKEY = () => 'lynko_locked:' + uid(), PKEY = () => 'lynko_cpin:' + uid(), HKEY = () => 'lynko_lkhide:' + uid();
 const ids = () => { try { return new Set(JSON.parse(localStorage.getItem(LKEY()) || '[]')) } catch { return new Set() } };
 function save(s) {
   localStorage.setItem(LKEY(), JSON.stringify([...s]));
@@ -100,65 +100,117 @@ function migrate() {   // old per-chat PIN locks -> new Locked chats folder
   for (const k of Object.keys(localStorage)) if (k.startsWith('lk:' + u + ':')) { s.add(k.split(':')[2]); localStorage.removeItem(k); ch = true }
   if (ch || !localStorage.getItem('lynko_lock_sync')) { save(s); localStorage.setItem('lynko_lock_sync', '1') }
 }
-const askPw = title => new Promise(res => {
-  const o = document.createElement('div'); o.className = 'ov'; o.style.zIndex = 900;
-  o.innerHTML = '<div class="dlg"><h3></h3><input type="password" autocomplete="current-password" placeholder="Password" style="width:100%"><div class="r"><button class="no">Cancel</button><button class="ok">OK</button></div></div>';
-  o.querySelector('h3').textContent = title; document.body.appendChild(o);
-  const i = o.querySelector('input'); i.focus(); const done = v => { o.remove(); res(v) };
-  o.querySelector('.no').onclick = () => done(null); o.querySelector('.ok').onclick = () => done(i.value);
-  i.addEventListener('keydown', e => { if (e.key == 'Enter') done(i.value) });
-});
-async function newPin() {
-  const a = await ask('Create a chat-lock PIN (4–6 digits)', { pin: true, ok: 'Next' }); if (a === null) return false;
-  if (!/^\d{4,6}$/.test(a)) { say('PIN must be 4–6 digits'); return false }
-  const b = await ask('Repeat the PIN', { pin: true, ok: 'Save' }); if (b === null) return false;
-  if (a !== b) { say('PINs don’t match'); return false }
-  const salt = hex(crypto.getRandomValues(new Uint8Array(8)));
-  localStorage.setItem(PKEY(), JSON.stringify({ s: salt, h: await sha(a + ':' + salt) })); clear('pin'); say('Chat-lock PIN saved'); return true;
+const askPw = title => askText(title, { type: 'password', ph: 'Password', ok: 'OK', ac: 'current-password' });
+// generic text dialog (the main script's ask() only does numeric PINs)
+function askText(title, { type = 'password', ph = '', ok = 'OK', ac = 'off', note = '' } = {}) {
+  return new Promise(res => {
+    const o = document.createElement('div'); o.className = 'ov'; o.style.zIndex = 900;
+    o.innerHTML = '<div class="dlg"><h3></h3><small class="lknote" style="color:#d6a6ba;line-height:1.5"></small><input style="width:100%" autocapitalize="off" autocorrect="off" spellcheck="false"><div class="r"><button class="no">Cancel</button><button class="ok"></button></div></div>';
+    o.querySelector('h3').textContent = title; o.querySelector('.lknote').textContent = note; o.querySelector('.lknote').hidden = !note;
+    o.querySelector('.ok').textContent = ok;
+    const i = o.querySelector('input'); i.type = type; i.placeholder = ph; i.autocomplete = ac; document.body.appendChild(o); i.focus();
+    const done = v => { o.remove(); res(v) };
+    o.querySelector('.no').onclick = () => done(null); o.querySelector('.ok').onclick = () => done(i.value);
+    i.addEventListener('keydown', e => { if (e.key == 'Enter') done(i.value) });
+  });
 }
+// secret code = 4+ characters (letters / numbers / symbols). Stored as a salted PBKDF2 hash (v2). Old 4–6 digit PINs (sha256) still work and are upgraded on first use.
+const MINCODE = 4;
+async function hashCode(code, salt) { return hex(await kdf(code, 'chatlock:' + salt)) }
+async function codeOk(code) {
+  let rec; try { rec = JSON.parse(localStorage.getItem(PKEY()) || 'null') } catch {} if (!rec) return false;
+  if (rec.v == 2) return (await hashCode(code, rec.s)) === rec.h;
+  if ((await sha(code + ':' + rec.s)) === rec.h) { try { localStorage.setItem(PKEY(), JSON.stringify({ v: 2, s: rec.s, h: await hashCode(code, rec.s) })) } catch {} return true }   // legacy -> upgrade
+  return false;
+}
+async function newCode(first) {
+  const a = await askText(first ? 'Create a secret code' : 'New secret code', { type: 'password', ph: 'Secret code', ok: 'Next', ac: 'new-password',
+    note: 'You will type this code in the search bar to open your Locked chats. At least 4 characters — letters, numbers or symbols. Don’t use your login password.' });
+  if (a === null) return false;
+  if (a.length < MINCODE) { say('Code must be at least 4 characters'); return false }
+  if (a !== a.trim()) { say('No spaces at the start or end of the code'); return false }
+  if (a.length > 40) { say('Code is too long (max 40)'); return false }
+  const b = await askText('Repeat the secret code', { type: 'password', ph: 'Secret code', ok: 'Save', ac: 'new-password' });
+  if (b === null) return false;
+  if (a !== b) { say('Codes don’t match'); return false }
+  const salt = hex(crypto.getRandomValues(new Uint8Array(16)));
+  localStorage.setItem(PKEY(), JSON.stringify({ v: 2, s: salt, h: await hashCode(a, salt) })); clear('pin');
+  if (localStorage.getItem(HKEY()) === null) localStorage.setItem(HKEY(), '1');       // default: folder stays hidden until the code is typed
+  say('Secret code saved'); return true;
+}
+// search-bar guard: typing a normal search must never lock you out, but guessing is still throttled (30 checks / minute)
+let chk = [];
+const throttled = () => { const n = Date.now(); chk = chk.filter(t => n - t < 6e4); if (chk.length >= 30) return true; chk.push(n); return false };
 const chat = {
   open: false,
   has: id => ids().has(id),
   count: () => ids().size,
   list: () => [...ids()],
   isOpen: () => chat.open,
-  async gate() {   // true once the Locked chats folder is open
+  hasCode: () => !!localStorage.getItem(PKEY()),
+  setup: () => newCode(true),
+  hidden: () => chat.hasCode() && localStorage.getItem(HKEY()) !== '0',           // folder/chip invisible until the code is typed
+  setHidden: v => localStorage.setItem(HKEY(), v ? '1' : '0'),
+  async tryCode(text) {   // called from the search bar. true = the text WAS the secret code and Locked chats are now open
+    if (!chat.hasCode() || chat.open || text.length < MINCODE || text.length > 40) return false;
+    if (wait('pin') || throttled()) return false;
+    const ok = await codeOk(text);
+    if (ok) { clear('pin'); chat.open = true }
+    return ok;
+  },
+  async gate() {   // true once the Locked chats folder is open (used when opening a locked chat directly, e.g. from a notification)
     if (chat.open) return true;
-    if (!localStorage.getItem(PKEY())) { if (!(await newPin())) return false }
+    if (!chat.hasCode()) { if (!(await newCode(true))) return false }
     else {
       const w = wait('pin'); if (w) { say(`Too many tries. Wait ${w}s`); return false }
-      const p = await ask('Enter your chat-lock PIN', { pin: true }); if (p === null) return false;
-      const rec = JSON.parse(localStorage.getItem(PKEY()));
-      if (await sha(p + ':' + rec.s) !== rec.h) { fail('pin'); say(tries('pin').n >= 3 ? 'Wrong PIN · forgot it? Profile → Reset chat-lock PIN' : 'Wrong PIN'); return false }
+      const p = await askText('Enter your secret code', { type: 'password', ph: 'Secret code', ac: 'off' }); if (p === null) return false;
+      if (!(await codeOk(p))) { fail('pin'); say(tries('pin').n >= 3 ? 'Wrong code · forgot it? Settings → Chat lock → Reset secret code' : 'Wrong code'); return false }
       clear('pin');
     }
     chat.open = true; return true;
   },
   relock() {
     if (!chat.open) return; chat.open = false;
-    try { if (cur && chat.has(cur)) closeChat(); if (flt == 'locked') renderList() } catch {}
+    try { if (cur && chat.has(cur)) closeChat(); if (flt == 'locked') { flt = 'all'; document.querySelectorAll('#chips button').forEach(x => x.classList.toggle('on', x.dataset.f == 'all')) } if (window.syncChips) syncChips(); renderList() } catch {}
   },
   async toggle(id) {   // ⋮ menu inside a chat
-    if (!(await chat.gate())) return;
+    if (!chat.hasCode()) { if (!(await newCode(true))) return }
+    else if (!chat.open && !(await chat.gate())) return;
     const s = ids();
     if (s.has(id)) { s.delete(id); save(s); say('Chat unlocked'); renderList(); return }
-    s.add(id); save(s); say('Chat locked · find it under Locked chats'); closeChat(); renderList();
+    s.add(id); save(s); chat.open = false;
+    say(chat.hidden() ? 'Chat locked · type your secret code in the search bar to find it' : 'Chat locked · find it under Locked chats'); closeChat(); if (window.syncChips) syncChips(); renderList();
   },
-  row() {   // folder row shown at the top of the chat list
+  row() {   // folder row shown at the top of the chat list (only when not hidden)
     const b = document.createElement('button'); b.className = 'item';
     b.innerHTML = '<div class="av" style="background:linear-gradient(135deg,#7f5cff,#ff5c8a);font-size:22px">🔒</div><div class="n"><div class="r1"><b>Locked chats</b></div><div class="r2"><span class="pv"></span></div></div>';
     b.querySelector('.pv').textContent = chat.count() + (chat.count() == 1 ? ' chat' : ' chats');
-    b.onclick = async () => { if (await chat.gate()) document.querySelector('#chips [data-f=locked]').click() };
+    b.onclick = async () => { if (await chat.gate()) { if (window.syncChips) syncChips(); document.querySelector('#chips [data-f=locked]').click() } };
     return b;
   },
-  async resetPin() {   // forgot the PIN: prove it's you with the account password
+  async resetPin() {   // forgot the code (or want a new one): prove it's you with the account password
     const w = wait('app'); if (w) return say(`Too many tries. Wait ${w}s`);
     const pw = await askPw('Enter your account password'); if (pw === null) return;
     if (!(await checkPw(pw))) { fail('app'); return say('Wrong password') }
-    clear('app'); if (await newPin()) chat.open = false;
+    clear('app'); await newCode(!chat.hasCode());
+  },
+  async removeCode() {   // turn the secret code off: every locked chat is unlocked again
+    const pw = await askPw('Enter your account password'); if (pw === null) return;
+    if (!(await checkPw(pw))) { fail('app'); return say('Wrong password') }
+    clear('app'); localStorage.removeItem(PKEY()); localStorage.removeItem(HKEY()); save(new Set()); chat.open = false; say('Chat lock removed');
+    if (window.syncChips) syncChips(); try { renderList() } catch {}
   },
 };
 migrate();
 
-window.LOCK = { ready, chat, checkPw, lock: show, setAfter: v => localStorage.setItem('lk_after', v), after: () => localStorage.getItem('lk_after') || 'now' };
+// ───────────── privacy screen: hides the app contents in the app switcher ─────────────
+const shield = document.createElement('div'); shield.id = 'lkshield'; shield.hidden = true;
+shield.style.cssText = 'position:fixed;top:0;right:0;bottom:0;left:0;z-index:2000;background:#14040f;display:flex;align-items:center;justify-content:center;font:italic 700 40px Fraunces,serif;color:#fff';
+shield.innerHTML = 'Lynko<i style="color:#ff5c8a;font-style:normal">♥</i>'; document.body.appendChild(shield);
+const shieldOn = () => localStorage.getItem('lk_shield') !== '0';
+const cover = () => { if (shieldOn() && localStorage.getItem('lynko_enc')) shield.hidden = false }, uncover = () => { shield.hidden = true };
+document.addEventListener('visibilitychange', () => document.hidden ? cover() : uncover());
+addEventListener('pagehide', cover); addEventListener('pageshow', uncover); addEventListener('focus', uncover);
+
+window.LOCK = { ready, chat, checkPw, askText, shield: { get: shieldOn, set: v => localStorage.setItem('lk_shield', v ? '1' : '0') }, lock: show, setAfter: v => localStorage.setItem('lk_after', v), after: () => localStorage.getItem('lk_after') || 'now' };
 })();
