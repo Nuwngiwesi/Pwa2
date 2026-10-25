@@ -49,12 +49,13 @@ input::placeholder{color:#b98aa0}
   <div class="logo"><b>Lynko</b><i>♥</i></div>
   <p class="sub">Private chats that disappear in 24 hours</p>
   <div class="tabs"><button id="tl" class="on">Log in</button><button id="tr">Create account</button></div>
-  <input id="u" placeholder="Username" autocomplete="username" autocapitalize="none" spellcheck="false">
+  <input id="u" type="tel" placeholder="Phone number" autocomplete="tel" inputmode="tel" spellcheck="false">
+  <input id="nm" placeholder="Your name" maxlength="30" autocomplete="name" hidden>
   <input id="p" type="password" placeholder="Password" autocomplete="current-password">
   <button class="go" id="go">Log in</button>
   <div id="err"></div>
   <button id="inst" class="go" type="button" style="background:rgba(255,255,255,.1);box-shadow:none;border:1px solid var(--line);margin-top:10px" hidden>📲 Install LYNKO CHAT app</button>
-  <p class="note">Messages are encrypted on your device. Not even the server can read them. If you forget your password, your chats can't be recovered.</p>
+  <p class="note">Messages are encrypted on your device. Not even the server can read them. If you forget your password, your chats can't be recovered. The app asks for your password every time you reopen it.</p>
 </main>
 <script>
 // floating hearts
@@ -73,38 +74,47 @@ const authOf=async(pw,u)=>hex(await kdf(pw,'auth:'+u));   // server never sees t
 
 let mode='login';
 function setMode(m){mode=m;$('tl').classList.toggle('on',m=='login');$('tr').classList.toggle('on',m!='login');
-  $('go').textContent=m=='login'?'Log in':'Create account';$('p').autocomplete=m=='login'?'current-password':'new-password';$('err').textContent=''}
+  $('nm').hidden=m=='login';$('go').textContent=m=='login'?'Log in':'Create account';$('p').autocomplete=m=='login'?'current-password':'new-password';$('err').textContent=''}
 $('tl').onclick=()=>setMode('login');$('tr').onclick=()=>setMode('reg');
 
 async function post(url,body){const r=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const d=await r.json().catch(()=>({}));if(!r.ok)throw new Error(d.error||'Something went wrong');return d}
 
+let CC='94';fetch('/api/config').then(r=>r.json()).then(c=>{CC=c.cc||CC}).catch(()=>{});
+// same rule as the server: digits only, local 0xxxxxxxxx -> country code. Letters = an old username account.
+const ident=raw=>{raw=raw.trim();if(/[a-z]/i.test(raw))return raw.toLowerCase();let d=raw.replace(/\D/g,'');if(d.startsWith('00'))d=d.slice(2);else if(d.startsWith('0'))d=CC+d.slice(1);return d};
 $('go').onclick=async()=>{
-  const username=$('u').value.trim().toLowerCase(), pw=$('p').value;
-  if(!username||pw.length<6){$('err').textContent='Enter a username and a password of 6+ characters';return}
+  const id=ident($('u').value), pw=$('p').value, name=$('nm').value.trim(), legacy=/[a-z]/.test(id);
+  if(!legacy&&!/^\d{8,15}$/.test(id)){$('err').textContent='Enter a valid phone number';return}
+  if(mode=='reg'&&!name){$('err').textContent='Enter your name';return}
+  if(pw.length<6){$('err').textContent='Password must be 6+ characters';return}
+  if(mode=='reg'&&legacy){$('err').textContent='Enter a phone number';return}
   $('go').disabled=true;$('err').textContent=mode=='reg'?'Creating your keys…':'';
   try{
-    const auth=await authOf(pw,username), wk=await wrapKey(pw,username);
+    const auth=await authOf(pw,id), wk=await wrapKey(pw,id);
+    let me,encPriv,priv;
     if(mode=='reg'){
       const kp=await crypto.subtle.generateKey({name:'ECDH',namedCurve:'P-256'},true,['deriveKey']);
       const pub=JSON.stringify(await crypto.subtle.exportKey('jwk',kp.publicKey));
-      const priv=JSON.stringify(await crypto.subtle.exportKey('jwk',kp.privateKey));
+      priv=JSON.stringify(await crypto.subtle.exportKey('jwk',kp.privateKey));
       const iv=crypto.getRandomValues(new Uint8Array(12));
       const ct=await crypto.subtle.encrypt({name:'AES-GCM',iv},wk,enc.encode(priv));
-      const encPriv=JSON.stringify({iv:b64(iv),ct:b64(ct)});
-      const me=await post('/api/register',{username,auth,pub,encPriv});
-      window.caches&&caches.delete('lynko-api-v2');localStorage.setItem('lynko_priv',priv);localStorage.setItem('lynko_id',me.id);
+      encPriv=JSON.stringify({iv:b64(iv),ct:b64(ct)});
+      me=await post('/api/register',{phone:id,name,auth,pub,encPriv});
     }else{
-      const me=await post('/api/login',{username,auth});
-      const e=JSON.parse(me.encPriv);
-      const priv=new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:unb64(e.iv)},wk,unb64(e.ct)));
-      window.caches&&caches.delete('lynko-api-v2');localStorage.setItem('lynko_priv',priv);localStorage.setItem('lynko_id',me.id);
+      me=await post('/api/login',legacy?{username:id,auth}:{phone:id,auth});
+      encPriv=me.encPriv;const e=JSON.parse(encPriv);
+      priv=new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:unb64(e.iv)},wk,unb64(e.ct)));
     }
+    window.caches&&caches.delete('lynko-api-v2');
+    // the key is kept ENCRYPTED on the phone; the unlocked copy lives only for this app session
+    localStorage.removeItem('lynko_priv');localStorage.setItem('lynko_enc',encPriv);localStorage.setItem('lynko_ident',id);
+    localStorage.setItem('lynko_id',me.id);localStorage.setItem('lynko_name',me.username||name);sessionStorage.setItem('lynko_priv',priv);
     location.href='/chat';
-  }catch(e){$('err').textContent=e.message;$('go').disabled=false}
+  }catch(e){$('err').textContent=e.name=='OperationError'?'Wrong number or password':e.message;$('go').disabled=false}
 };
-['u','p'].forEach(i=>$(i).addEventListener('keydown',e=>{if(e.key=='Enter')$('go').click()}));
-fetch('/api/me').then(r=>{if(r.ok&&localStorage.getItem('lynko_priv'))location.href='/chat'});
+['u','nm','p'].forEach(i=>$(i).addEventListener('keydown',e=>{if(e.key=='Enter')$('go').click()}));
+fetch('/api/me').then(r=>{if(r.ok&&localStorage.getItem('lynko_enc'))location.href='/chat'});
 </script>
 </body>
 </html>
