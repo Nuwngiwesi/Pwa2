@@ -232,7 +232,7 @@ input:-webkit-autofill,textarea:-webkit-autofill{-webkit-box-shadow:0 0 0 100px 
 <meta name="apple-mobile-web-app-title" content="LYNKO CHAT">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <link rel="icon" href="/icons/icon-192.png">
-<script src="/install.js" defer></script>
+<script src="/install.js?v={{V}}" defer></script>
 <script>(function(){var vv=window.visualViewport,f=function(){document.documentElement.style.setProperty('--vh',((vv?vv.height:window.innerHeight)*0.01)+'px');if(scrollY||scrollX)scrollTo(0,0)};f();
 addEventListener('resize',f);addEventListener('orientationchange',function(){setTimeout(f,150)});addEventListener('scroll',function(){if(scrollY||scrollX)scrollTo(0,0)},{passive:true});
 if(vv){vv.addEventListener('resize',f);vv.addEventListener('scroll',f)}document.addEventListener('focusout',function(){setTimeout(f,80)})})()</script>
@@ -265,8 +265,8 @@ if(vv){vv.addEventListener('resize',f);vv.addEventListener('scroll',f)}document.
   </section>
 </div>
 <input type="file" id="fs" accept="image/*,video/*" hidden><input type="file" id="fsc" accept="image/*" capture="environment" hidden><input type="file" id="fg" accept="image/*,video/*" hidden><input type="file" id="fc" accept="image/*" capture="environment" hidden>
-<script src="/lock.js"></script>
-<script src="/features.js"></script>
+<script src="/lock.js?v={{V}}"></script>
+<script src="/features.js?v={{V}}"></script>
 <script>
 const $=id=>document.getElementById(id), enc=new TextEncoder(), dec=new TextDecoder();
 const hex=b=>[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('');
@@ -895,7 +895,7 @@ document.addEventListener('visibilitychange',()=>{
   await LOCK.ready;const pj=sessionStorage.getItem('lynko_priv');if(!pj)return leave();
   let cfg;try{[me,cfg]=await Promise.all([api('/api/me'),api('/api/config')])}catch{return}
   priv=await crypto.subtle.importKey('jwk',JSON.parse(pj),{name:'ECDH',namedCurve:'P-256'},false,['deriveKey']);
-  contacts=new Map(me.contacts.map(c=>[c.id,c]));paintMe();applyWp();renderList();loadChats().catch(()=>{});loadStatuses().catch(()=>{});loadOfficial().catch(()=>{});
+  contacts=new Map(me.contacts.map(c=>[c.id,c]));paintMe();applyWp();try{renderList()}catch(e){console.error(e)}loadChats().catch(()=>{});loadStatuses().catch(()=>{});loadOfficial().catch(()=>{});
   if(typeof Pusher==='undefined')await new Promise(r=>{const e=$('pjs');if(!e)return r();e.addEventListener('load',r);e.addEventListener('error',r);setTimeout(r,5000)});
   if(typeof Pusher==='undefined')return;   // offline: show saved chats only
   const ps=new Pusher(cfg.key,{cluster:cfg.cluster,channelAuthorization:{endpoint:'/api/pusher/auth'}}),ch=ps.subscribe('private-u-'+me.id);
