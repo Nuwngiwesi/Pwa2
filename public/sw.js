@@ -70,7 +70,7 @@ self.addEventListener('fetch', e => {
     }));
     return;
   }
-  if (url.pathname === '/health' || url.pathname.startsWith('/admin')) return;   // never cache admin
+  if (url.pathname === '/health' || url.pathname.startsWith('/admin') || url.pathname.endsWith('.apk')) return;   // never cache admin / the APK
   if (url.pathname.startsWith('/api/')) {
     if (READ.test(url.pathname)) e.respondWith(apiRead(req, url));
     return;
