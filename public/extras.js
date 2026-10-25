@@ -52,64 +52,71 @@
     inp.addEventListener('keydown', e => { if (e.key == 'Enter') send(inp.value); });
   }
 
-  // ───────────── Movie Bot (TMDB: info only) ─────────────
   const esc = t => String(t == null ? '' : t).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-  const botSt = document.createElement('style');
-  botSt.textContent = '.lx .card{display:flex;gap:10px;align-items:center;width:100%;text-align:left;background:#33152a;border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:8px;margin:6px 0;color:#fff0f5;font:inherit;cursor:pointer}' +
-    '.lx .card img,.lx .ph{width:52px;height:78px;border-radius:10px;object-fit:cover;background:#4a1d3d;flex:none}.lx .card small{display:block;color:#d6a6ba}' +
-    '.lx .det{background:#33152a;border-radius:18px;overflow:hidden;margin:8px 0}.lx .det .hd{display:flex;gap:12px;padding:12px}.lx .det .hd img{width:110px;border-radius:12px;flex:none}' +
-    '.lx .det p{margin:6px 12px;font-size:14.5px;color:#ffd9e6}.lx .det .lbl{color:#d6a6ba;font-size:12px;margin:8px 12px 0;text-transform:uppercase;letter-spacing:.4px}' +
-    '.lx .det a{display:inline-block;margin:8px 12px 12px;padding:10px 16px;border-radius:14px;background:linear-gradient(135deg,#ff5c8a,#c14bff);color:#fff;text-decoration:none;font-weight:700}' +
-    '#lxAi{position:fixed;right:16px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:30;width:54px;height:54px;border:0;border-radius:18px;font-size:26px;cursor:pointer;color:#fff;background:linear-gradient(135deg,#7f5cff,#ff5c8a);box-shadow:0 8px 24px rgba(127,92,255,.45)}#lxAi:active{transform:scale(.94)}#lxAi[hidden]{display:none}';
-  document.head.appendChild(botSt);
-  const poster = (p, sz) => p ? '<img loading="lazy" alt="" src="/api/movies/img/' + sz + p + '">' : '<div class="ph"></div>';
-  const getJ = async u => { const r = await fetch(u); const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || 'Something went wrong'); return d; };
-  function movies() {
-    const o = mk('🎬 Movie Bot');
-    o.insertAdjacentHTML('beforeend', '<div class="bd" id="mvb"></div><div class="in"><input id="mvi" placeholder="Search a movie or series…" maxlength="80" enterkeyhint="search"><button id="mvs">Search</button></div>');
-    const bd = o.querySelector('#mvb'), inp = o.querySelector('#mvi'); let busy = false;
-    const bub = (c, t) => { const d = document.createElement('div'); d.className = 'm ' + c; d.textContent = t; bd.appendChild(d); bd.scrollTop = bd.scrollHeight; return d; };
-    bub('a', 'Hi! 🎬 Movie ekak hari series ekak hari nama type karanna — poster, rating, cast, trailer, kohe balanna puluwandha kiyala pennannam.\n(Info witharai — movie download karanne na.)');
-    async function search(q) {
-      q = q.trim(); if (!q || busy) return; busy = true; inp.value = ''; bub('u', q); const w = bub('a', 'Searching…');
-      try {
-        const r = await getJ('/api/movies/search?q=' + encodeURIComponent(q));
-        if (!r.length) { w.textContent = 'Mukuth hambuna na 😕 Wena namakin try karanna.'; busy = false; return; }
-        w.textContent = 'Mewa hambuna — thotanna:';
-        r.forEach(x => { const b = document.createElement('button'); b.className = 'card'; b.innerHTML = poster(x.poster, 'w92') + '<div><b>' + esc(x.title) + '</b> ' + esc(x.year ? '(' + x.year + ')' : '') + '<small>' + (x.type == 'tv' ? '📺 Series' : '🎬 Movie') + (x.rating ? ' · ⭐ ' + x.rating : '') + '</small></div>'; b.onclick = () => details(x); bd.appendChild(b); });
-      } catch (e) { w.textContent = '⚠️ ' + e.message; }
-      bd.scrollTop = bd.scrollHeight; busy = false;
-    }
-    async function details(x) {
-      if (busy) return; busy = true; bub('u', x.title); const w = bub('a', 'Loading…');
-      try {
-        const d = await getJ('/api/movies/' + x.type + '/' + x.id); w.remove();
-        const el = document.createElement('div'); el.className = 'det';
-        const wh = d.where ? [d.where.stream.length ? 'Stream: ' + d.where.stream.join(', ') : '', d.where.rent.length ? 'Rent: ' + d.where.rent.join(', ') : '', d.where.buy.length ? 'Buy: ' + d.where.buy.join(', ') : ''].filter(Boolean).join(' · ') + ' (' + d.where.region + ')' : '';
-        el.innerHTML = '<div class="hd">' + poster(d.poster, 'w342') + '<div><b style="font-size:18px">' + esc(d.title) + '</b><br><span style="color:#d6a6ba">' + esc([d.year, d.runtime ? d.runtime + ' min' : '', d.seasons ? d.seasons + ' season' + (d.seasons > 1 ? 's' : '') : ''].filter(Boolean).join(' · ')) + '</span><br>' + (d.rating ? '⭐ ' + d.rating + ' <span style="color:#d6a6ba">(' + d.votes + ')</span><br>' : '') + '<span style="color:#d6a6ba">' + esc(d.genres.join(', ')) + '</span></div></div>' +
-          (d.tagline ? '<p><i>' + esc(d.tagline) + '</i></p>' : '') + (d.overview ? '<div class="lbl">Story</div><p>' + esc(d.overview) + '</p>' : '') +
-          (d.director ? '<div class="lbl">Director</div><p>' + esc(d.director) + '</p>' : '') + (d.cast.length ? '<div class="lbl">Cast</div><p>' + esc(d.cast.join(', ')) + '</p>' : '') +
-          (wh ? '<div class="lbl">Where to watch</div><p>' + esc(wh) + '</p>' : '<div class="lbl">Where to watch</div><p>No info for your region.</p>') +
-          (d.trailer ? '<a href="' + esc(d.trailer) + '" target="_blank" rel="noopener">▶ Watch trailer</a>' : '') + '<div class="lbl" style="margin-bottom:10px">Data: TMDB</div>';
-        bd.appendChild(el);
-      } catch (e) { w.textContent = '⚠️ ' + e.message; }
-      bd.scrollTop = bd.scrollHeight; busy = false;
-    }
-    o.querySelector('#mvs').onclick = () => search(inp.value);
-    inp.addEventListener('keydown', e => { if (e.key == 'Enter') search(inp.value); });
-    setTimeout(() => inp.focus(), 100);
+  const st2 = document.createElement('style');
+  st2.textContent = '.pbn{width:100%;aspect-ratio:3/1;border-radius:18px;background:linear-gradient(135deg,#7f5cff,#ff5c8a) center/cover;display:grid;place-items:center;color:#fff;font-size:13px;cursor:pointer;margin-bottom:-6px}' +
+    '.lx.cr{background:#000;z-index:90}.lx .cs{flex:1;display:grid;place-items:center;padding:16px;touch-action:none}.lx .cb{overflow:hidden;background:#222;box-shadow:0 0 0 2000px rgba(0,0,0,.62);touch-action:none}.lx .cb.round{border-radius:50%}.lx .cb canvas{display:block;touch-action:none;cursor:grab}' +
+    '.lx .zr{display:flex;align-items:center;gap:12px;padding:12px 22px calc(18px + env(safe-area-inset-bottom));color:#fff0f5}.lx .zr input{flex:1;accent-color:#ff5c8a}' +
+    '.lx .pg .bn{height:150px;background:linear-gradient(135deg,#7f5cff,#ff5c8a) center/cover}.lx .pg .id{display:flex;flex-direction:column;align-items:center;margin-top:-52px;padding:0 20px;text-align:center}' +
+    '.lx .pg .av.big{width:104px;height:104px;font-size:42px;border:4px solid #120510;box-shadow:0 8px 24px rgba(0,0,0,.4)}.lx .pg h2{margin:12px 0 2px;font-size:24px;color:#fff0f5}.lx .pg .ab{color:#ffd9e6;max-width:420px;margin:6px 0 14px}' +
+    '.lx .pg .row{display:flex;gap:10px;justify-content:center;margin:6px 0 18px;flex-wrap:wrap}.lx .pg .row button{border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.07);color:#fff0f5;border-radius:16px;padding:11px 16px;font:600 14px inherit;cursor:pointer}' +
+    '.lx .pg .box{margin:0 16px 12px;max-width:520px;align-self:center;background:#33152a;border-radius:16px;padding:12px 16px}.lx .pg .box small{display:block;color:#d6a6ba;font-size:12px;text-transform:uppercase;letter-spacing:.4px}' +
+    '#lxAi{position:fixed;right:16px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:30;width:56px;height:56px;padding:0;overflow:hidden;border:2px solid rgba(255,255,255,.25);border-radius:19px;font-size:26px;cursor:pointer;color:#fff;background:linear-gradient(135deg,#7f5cff,#ff5c8a);box-shadow:0 8px 24px rgba(127,92,255,.45)}#lxAi img{width:100%;height:100%;object-fit:cover;display:block}#lxAi:active{transform:scale(.94)}#lxAi[hidden]{display:none}';
+  document.head.appendChild(st2);
+
+  // crop a picked photo: drag to move, slider / pinch to zoom → returns base64 JPEG (no prefix) or null
+  function crop(file, ratio, outW, title) {
+    return new Promise(async res => {
+      let bm; try { bm = await createImageBitmap(file); } catch { return res(null); }
+      const o = document.createElement('div'); o.className = 'lx cr';
+      o.innerHTML = '<div class="bar"><button data-c>Cancel</button><b style="flex:1;text-align:center"></b><button data-ok style="font-weight:700">Use</button></div><div class="cs"><div class="cb' + (ratio == 1 ? ' round' : '') + '"><canvas></canvas></div></div><div class="zr"><span>🔍</span><input type="range" min="1" max="4" step="0.01" value="1"></div>';
+      o.querySelector('b').textContent = title || 'Crop'; document.body.appendChild(o);
+      const cs = o.querySelector('.cs'), cb = o.querySelector('.cb'), cv = o.querySelector('canvas'), zr = o.querySelector('input'), ctx = cv.getContext('2d');
+      const bw = Math.min(cs.clientWidth - 32, ratio == 1 ? 320 : 640), bh = bw / ratio, dpr = Math.min(2, devicePixelRatio || 1);
+      cb.style.width = bw + 'px'; cb.style.height = bh + 'px'; cv.width = bw * dpr; cv.height = bh * dpr; cv.style.width = bw + 'px'; cv.style.height = bh + 'px';
+      const base = Math.max(bw / bm.width, bh / bm.height); let z = 1, cx = bm.width / 2, cy = bm.height / 2;
+      const clamp = () => { const sw = bw / (base * z), sh = bh / (base * z); cx = Math.max(sw / 2, Math.min(bm.width - sw / 2, cx)); cy = Math.max(sh / 2, Math.min(bm.height - sh / 2, cy)); return [cx - sw / 2, cy - sh / 2, sw, sh]; };
+      const draw = (c, w, h) => { const [sx, sy, sw, sh] = clamp(); c.drawImage(bm, sx, sy, sw, sh, 0, 0, w, h); };
+      const paint = () => draw(ctx, cv.width, cv.height); paint();
+      zr.oninput = () => { z = +zr.value; paint(); };
+      const P = new Map(); let d0 = 0, z0 = 1;
+      cv.onpointerdown = e => { cv.setPointerCapture(e.pointerId); P.set(e.pointerId, [e.clientX, e.clientY]); if (P.size == 2) { const [a, b] = [...P.values()]; d0 = Math.hypot(a[0] - b[0], a[1] - b[1]); z0 = z; } };
+      cv.onpointermove = e => {
+        if (!P.has(e.pointerId)) return; const old = P.get(e.pointerId); P.set(e.pointerId, [e.clientX, e.clientY]);
+        if (P.size == 2) { const [a, b] = [...P.values()]; z = Math.max(1, Math.min(4, z0 * Math.hypot(a[0] - b[0], a[1] - b[1]) / (d0 || 1))); zr.value = z; }
+        else { cx -= (e.clientX - old[0]) / (base * z); cy -= (e.clientY - old[1]) / (base * z); }
+        paint();
+      };
+      cv.onpointerup = cv.onpointercancel = e => P.delete(e.pointerId);
+      cv.onwheel = e => { e.preventDefault(); z = Math.max(1, Math.min(4, z - e.deltaY / 500)); zr.value = z; paint(); };
+      const close = v => { o.remove(); try { bm.close(); } catch {} res(v); };
+      o.querySelector('[data-c]').onclick = () => close(null);
+      o.querySelector('[data-ok]').onclick = () => {
+        const out = document.createElement('canvas'); out.width = outW; out.height = Math.round(outW / ratio); draw(out.getContext('2d'), out.width, out.height);
+        close(out.toDataURL('image/jpeg', ratio == 1 ? .85 : .78).split(',')[1]);
+      };
+    });
   }
-  const botShown = (qs, flt) => (flt == 'all' || !flt) && (!qs || 'movie bot'.includes(qs));
-  const botItem = () => {
-    const b = document.createElement('button'); b.className = 'item';
-    b.innerHTML = '<div class="av" style="background:linear-gradient(135deg,#ff9f0a,#ff5c8a);font-size:20px">🎬</div><div class="n"><div class="r1"><b>Movie Bot<i class="tag" style="background:#ff9f0a">BOT</i></b><time></time></div><div class="r2"><span class="pv">Search movies &amp; series 🎬</span></div></div>';
-    b.onclick = movies; return b;
-  };
-  window.LX = { help, legal, movies, botShown, botItem };
+
+  // contact info page: banner, big photo, name, about, ID, actions
+  function contact(c, a) {
+    const o = document.createElement('div'); o.className = 'lx';
+    o.innerHTML = '<div class="bar"><button data-x>‹ Back</button><b>Contact info</b></div><div class="bd pg" style="padding:0;display:flex;flex-direction:column"><div class="bn"></div><div class="id"><div class="avw"></div><h2></h2><div class="nm2" style="color:#d6a6ba;font-size:13px"></div></div></div>';
+    const pg = o.querySelector('.pg'); document.body.appendChild(o);
+    if (c.bnv) o.querySelector('.bn').style.backgroundImage = 'url(/api/banner/' + encodeURIComponent(c.id) + '?v=' + c.bnv + ')';
+    o.querySelector('.avw').innerHTML = a.avatar; o.querySelector('h2').textContent = c.username;
+    if (c.orig && c.orig !== c.username) o.querySelector('.nm2').textContent = 'Name on Lynko: ' + c.orig;
+    const mkBox = (l, t) => { const d = document.createElement('div'); d.className = 'box'; d.innerHTML = '<small></small><div></div>'; d.firstChild.textContent = l; d.lastChild.textContent = t; return d; };
+    const row = document.createElement('div'); row.className = 'row';
+    [['💬 Message', () => {}], ['📞 Call', a.call], ['✏️ Rename', a.rename], [a.locked ? '🔓 Unlock chat' : '🔒 Lock chat', a.lock]].forEach(([t, f]) => { const b = document.createElement('button'); b.textContent = t; b.onclick = () => { o.remove(); f && f(); }; row.appendChild(b); });
+    pg.appendChild(row); pg.appendChild(mkBox('About', c.about || 'Hey there! I’m using Lynko')); const idb = mkBox('Lynko ID · tap to copy', c.id); idb.onclick = () => { try { navigator.clipboard.writeText(c.id); } catch {} idb.firstChild.textContent = 'Copied ✓'; }; pg.appendChild(idb);
+    o.querySelector('[data-x]').onclick = () => o.remove();
+  }
+  window.LX = { help, legal, crop, contact };
 
   // floating ✨ Lynko AI button (like Meta AI in WhatsApp) — only on the chat list
   addEventListener('load', () => {
-    const f = document.createElement('button'); f.id = 'lxAi'; f.hidden = true; f.type = 'button'; f.textContent = '✨'; f.setAttribute('aria-label', 'Lynko AI');
+    const f = document.createElement('button'); f.id = 'lxAi'; f.hidden = true; f.type = 'button'; f.innerHTML = '<img src="/img/ai.png" alt="">'; f.firstChild.onerror = () => { f.textContent = '✨'; }; f.setAttribute('aria-label', 'Lynko AI');
     f.onclick = () => { try { F.openAI(); } catch {} };
     document.body.appendChild(f);
     const upd = () => {
