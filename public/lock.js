@@ -87,7 +87,8 @@ document.addEventListener('visibilitychange', () => {
   if (away > 10e3 && chat.open) chat.relock();                            // locked chats close quickly
   if (away > grace() && Date.now() > (+sessionStorage.getItem('lk_skip') || 0) && !busy) { chat.relock(); show() }
 });
-addEventListener('pagehide', () => { sessionStorage.removeItem('lynko_priv') });   // closing the app forgets the unlocked key
+addEventListener('pagehide', () => { if (sessionStorage.getItem('lk_reload') !== '1') sessionStorage.removeItem('lynko_priv') });   // closing the app forgets the unlocked key (except our own update-reload)
+sessionStorage.removeItem('lk_reload');
 
 // ───────────── Locked chats (WhatsApp-style, opened with a SECRET CODE typed in the search bar) ─────────────
 const LKEY = () => 'lynko_locked:' + uid(), PKEY = () => 'lynko_cpin:' + uid(), HKEY = () => 'lynko_lkhide:' + uid();
