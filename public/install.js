@@ -32,7 +32,7 @@
 
   const ua = navigator.userAgent;
   const isIOS = /iphone|ipad|ipod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone || /LynkoApp/.test(ua);
   let deferred = null;
   addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferred = e; });
   addEventListener('appinstalled', () => { deferred = null; const b = document.getElementById('inst'); if (b) b.hidden = true; });
