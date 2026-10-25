@@ -383,10 +383,11 @@ async function iceServers() {   // STUN + a TURN relay: without a relay many mob
       const j = await r.json(); if (r.ok && Array.isArray(j.iceServers)) ice.push(...j.iceServers); else console.warn('cloudflare turn:', r.status);
     } else if (E.METERED_DOMAIN && E.METERED_API_KEY) {   // Metered.ca TURN (free tier)
       const r = await fetch(`https://${E.METERED_DOMAIN}/api/v1/turn/credentials?apiKey=${encodeURIComponent(E.METERED_API_KEY)}`, { signal: AbortSignal.timeout(5000) });
-      const j = await r.json(); if (r.ok && Array.isArray(j)) ice.push(...j); else console.warn('metered turn:', r.status);
+      const j = await r.json().catch(() => null); if (r.ok && Array.isArray(j)) ice.push(...j); else console.warn('metered turn FAILED:', r.status, JSON.stringify(j).slice(0, 200));
     }
   } catch (e) { console.warn('turn lookup failed:', e.message); }
   if (E.TURN_URL) ice.push({ urls: E.TURN_URL.split(',').map(x => x.trim()), username: E.TURN_USER, credential: E.TURN_PASS });
+  console.log('ICE servers:', ice.map(x => [].concat(x.urls).join(' ')).join(' | ').replace(/\?key=[^ |]*/g, ''));
   const hasTurn = ice.some(x => [].concat(x.urls).some(u => /^turns?:/i.test(u)));
   if (!hasTurn && E.PUBLIC_TURN !== '0') {   // last resort so calls work out of the box (shared, best-effort, can be slow / full)
     ice.push({ urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turn:openrelay.metered.ca:443?transport=tcp', 'turns:openrelay.metered.ca:443?transport=tcp'], username: 'openrelayproject', credential: 'openrelayproject' });
