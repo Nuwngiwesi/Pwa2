@@ -1,9 +1,9 @@
 // LYNKO CHAT service worker — app shell + last-seen chats work offline.
 // Cached API data is the same ENCRYPTED data the server sends; it is wiped on logout.
-const SHELL = 'lynko-shell-v8', API = 'lynko-api-v2', EXT = 'lynko-ext-v2';
+const SHELL = 'lynko-shell-v9', API = 'lynko-api-v2', EXT = 'lynko-ext-v2';
 const PRE = ['/', '/chat', '/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png'];
-const READ = /^\/api\/(me|config|chats|messages|statuses|official|dp\/|blob\/|status\/)/;
-const IMMUTABLE = /^\/api\/(blob\/|dp\/|status\/[^/]+\/blob)/;   // media never changes -> cache first
+const READ = /^\/api\/(me|config|chats|messages|statuses|official|dp\/|banner\/|blob\/|status\/)/;
+const IMMUTABLE = /^\/api\/(blob\/|dp\/|banner\/|status\/[^/]+\/blob)/;   // media never changes -> cache first
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(SHELL).then(c => Promise.all(PRE.map(u => c.add(u).catch(() => {})))).then(() => self.skipWaiting()));
