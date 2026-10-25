@@ -2,7 +2,7 @@
 // Logo source: public/icons/logo.(png|jpg)  →  else ICON_URL env  →  else the default URL below.
 // If anything fails, the built-in fallback icons in /public/icons are served instead.
 const fs = require('fs'), path = require('path');
-const REMOTE = process.env.ICON_URL || 'https://cloud.laksidu.site/stream/hQLQEJiIax/lynko-chat-logo-500kb.jpg';
+const REMOTE = process.env.ICON_URL || 'https://cloud.laksidu.site/stream/G74DvQKpxe/lynko_chat_512x512-1.png';
 const BG = '#1a0713';
 const SPEC = { 'icon-192.png': [192, 0], 'icon-512.png': [512, 0], 'maskable-512.png': [512, 1], 'apple-touch-icon.png': [180, 1] };
 let sharp = null; try { sharp = require('sharp'); } catch { console.warn('⚠ sharp not installed — using fallback icons'); }
