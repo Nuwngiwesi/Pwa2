@@ -4,7 +4,11 @@ const bcrypt = require('bcryptjs'), jwt = require('jsonwebtoken'), Pusher = requ
 const { MongoClient, ObjectId } = require('mongodb');
 
 const SECRET = process.env.SESSION_SECRET;
-const MK = Buffer.from(process.env.MESSAGE_KEY, 'base64');
+const MK = Buffer.from(process.env.MESSAGE_KEY || '', 'base64');
+if (!SECRET) { console.error('✖ SESSION_SECRET is not set'); process.exit(1); }
+if (MK.length !== 32) { console.error('✖ MESSAGE_KEY must be 32 random bytes in base64 (node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'base64\'))")'); process.exit(1); }
+if (SECRET.length < 32) console.warn('⚠ SESSION_SECRET is short — use 32+ random characters');
+if (process.env.ADMIN_PASS && process.env.ADMIN_PASS.length < 12) console.warn('⚠ ADMIN_PASS is weak — use 12+ characters');
 const pusher = new Pusher({ appId: process.env.PUSHER_APP_ID, key: process.env.PUSHER_KEY,
   secret: process.env.PUSHER_SECRET, cluster: process.env.PUSHER_CLUSTER, useTLS: true });
 
@@ -18,6 +22,16 @@ for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => mon.flush().final
 const app = express();
 app.set('trust proxy', 1);
 app.use(mon.requests);
+// ── security headers (CSP only lets the page talk to itself + Pusher; no framing; mic/camera only for this origin) ──
+const CSP = ["default-src 'self'", "script-src 'self' 'unsafe-inline' https://js.pusher.com https://challenges.cloudflare.com", "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com data:", "img-src 'self' data: blob:", "media-src 'self' blob: data:", "connect-src 'self' https://*.pusher.com wss://*.pusher.com https://challenges.cloudflare.com", "frame-src https://challenges.cloudflare.com",
+  "worker-src 'self'", "manifest-src 'self'", "object-src 'none'", "base-uri 'self'", "form-action 'self'", "frame-ancestors 'none'"].join('; ');
+app.use((q, r, n) => {
+  r.set({ 'Content-Security-Policy': CSP, 'X-Content-Type-Options': 'nosniff', 'X-Frame-Options': 'DENY', 'Referrer-Policy': 'no-referrer',
+    'Permissions-Policy': 'microphone=(self), camera=(self), geolocation=(), payment=(), usb=(), bluetooth=()', 'Cross-Origin-Opener-Policy': 'same-origin' });
+  if (q.secure) r.set('Strict-Transport-Security', 'max-age=15552000; includeSubDomains');
+  n();
+});
 app.use(compression({ filter: (q, r) => !q.path.startsWith('/api/blob') && !q.path.startsWith('/api/ai') && compression.filter(q, r) }));
 app.use(express.json({ limit: '1mb' }));   // media no longer travels as JSON
 app.use(express.urlencoded({ extended: false }));
@@ -31,7 +45,25 @@ const unseal = bin => { const b = raw(bin); const d = crypto.createDecipheriv('a
 const tok = req => ((req.headers.cookie || '').split(';').map(s => s.trim()).find(s => s.startsWith('lynko=')) || '').slice(6);
 const auth = (req, res, next) => { try { req.u = jwt.verify(tok(req), SECRET); mon.touch(req.u.id); next(); } catch { res.status(401).json({ error: 'Login required' }); } };
 const give = (res, u) => res.cookie('lynko', jwt.sign({ id: u.id, u: u.username }, SECRET, { expiresIn: '30d' }),
-  { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', maxAge: 30 * 864e5 });
+  { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production' || !!res.req.secure, maxAge: 30 * 864e5 });
+// ── Cloudflare Turnstile (bot / credential-stuffing shield for login + register) ──
+const TS_SITE = process.env.TURNSTILE_SITE_KEY, TS_SECRET = process.env.TURNSTILE_SECRET;
+if (!TS_SITE || !TS_SECRET) console.warn('⚠ Cloudflare Turnstile is OFF — set TURNSTILE_SITE_KEY + TURNSTILE_SECRET to protect login/register');
+async function human(req) {
+  if (!TS_SITE || !TS_SECRET) return true;
+  const t = String((req.body || {}).cf || ''); if (!t || t.length > 2048) return false;
+  try {
+    const r = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', { method: 'POST',
+      body: new URLSearchParams({ secret: TS_SECRET, response: t, remoteip: req.ip }), signal: AbortSignal.timeout(6000) });
+    return !!(await r.json()).success;
+  } catch (e) { console.error('turnstile', e.message); return false; }   // can't verify -> fail closed
+}
+// ── per-ACCOUNT guess limit (the per-IP limit alone is beaten by rotating IPs): 8 wrong tries -> 15 min lock ──
+const acct = new Map();
+const acctLocked = k => { const a = acct.get(k); return !!(a && a.until > Date.now()); };
+const acctFail = k => { const n = Date.now(); let a = acct.get(k); if (!a || n - a.t > 15 * 6e4) a = { n: 0, until: 0, t: n }; a.n++; a.t = n; if (a.n >= 8) a.until = n + 15 * 6e4; acct.set(k, a); if (acct.size > 1e4) acct.clear(); };
+const acctOk = k => acct.delete(k);
+const DUMMY_HASH = bcrypt.hashSync('lynko-dummy', 12);   // compared when the account doesn't exist, so timing doesn't reveal who has an account
 const tries = new Map();
 const limited = ip => { const n = (tries.get(ip) || 0) + 1; tries.set(ip, n); setTimeout(() => tries.delete(ip), 6e5); return n > 15; };
 const chan = id => 'private-u-' + id;
@@ -92,7 +124,7 @@ app.get('/sw.js', (q, r) => { r.set('Cache-Control', 'no-cache'); r.type('js').s
 app.get('/features.js', (q, r) => { r.set('Cache-Control', 'no-cache'); r.type('js').sendFile(path.join(__dirname, 'public/features.js')); });
 app.get('/icons/:name', require('./icons'));   // LYNKO CHAT logo -> app icons
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: '7d', index: false }));
-app.get('/api/config', (q, r) => r.json({ key: process.env.PUSHER_KEY, cluster: process.env.PUSHER_CLUSTER, cc: CC, vapid: webpush ? process.env.VAPID_PUBLIC_KEY : null, ai: !!GROQ_KEY }));
+app.get('/api/config', (q, r) => r.json({ turnstile: TS_SITE && TS_SECRET ? TS_SITE : null, key: process.env.PUSHER_KEY, cluster: process.env.PUSHER_CLUSTER, cc: CC, vapid: webpush ? process.env.VAPID_PUBLIC_KEY : null, ai: !!GROQ_KEY }));
 
 // ── accounts ──
 app.post('/api/register', async (req, res) => {
@@ -102,18 +134,23 @@ app.post('/api/register', async (req, res) => {
   if (!nm) return res.status(400).json({ error: 'Enter your name' });
   if (!/^[0-9a-f]{64}$/.test(a || '') || !pub || !encPriv) return res.status(400).json({ error: 'Bad request' });
   if (limited(req.ip)) return res.status(429).json({ error: 'Too many tries. Wait a few minutes.' });
+  if (!(await human(req))) return res.status(403).json({ error: 'Security check failed. Please try again.' });
   let id; do { id = String(crypto.randomInt(10000000, 99999999)); } while (await U.findOne({ id }));
-  try { await U.insertOne({ id, phone: ph, username: nm, hash: await bcrypt.hash(a, 10), pub, encPriv, about: '', dpv: 0, contacts: [], createdAt: new Date() }); }
+  try { await U.insertOne({ id, phone: ph, username: nm, hash: await bcrypt.hash(a, 12), pub, encPriv, about: '', dpv: 0, contacts: [], createdAt: new Date() }); }
   catch (e) { return res.status(409).json({ error: 'This number is already registered. Log in instead.' }); }
   mon.count('reg'); give(res, { id, username: nm }); res.json({ id, username: nm });
 });
 app.post('/api/login', async (req, res) => {
   if (limited(req.ip)) return res.status(429).json({ error: 'Too many tries. Wait a few minutes.' });
+  if (!(await human(req))) return res.status(403).json({ error: 'Security check failed. Please try again.' });
   const b = req.body || {}; let u = null;
+  const key = 'a:' + (b.phone ? normPhone(b.phone) || 'x' : String(b.username || '').toLowerCase().slice(0, 40));
+  if (acctLocked(key)) return res.status(429).json({ error: 'Too many wrong tries for this account. Wait 15 minutes.' });
   if (b.phone) { const ph = normPhone(b.phone); if (ph) u = await U.findOne({ phone: ph }); }
   else if (b.username) u = await U.findOne({ username: String(b.username).toLowerCase(), phone: { $exists: false } });   // accounts made before number login
-  if (!u || !(await bcrypt.compare(String(b.auth || ''), u.hash))) { mon.count('loginFail'); return res.status(401).json({ error: 'Wrong number or password' }); }
-  mon.count('login'); give(res, u); res.json({ id: u.id, username: u.username, pub: u.pub, encPriv: u.encPriv });
+  const okPw = await bcrypt.compare(String(b.auth || ''), u ? u.hash : DUMMY_HASH);
+  if (!u || !okPw) { acctFail(key); mon.count('loginFail'); return res.status(401).json({ error: 'Wrong number or password' }); }
+  acctOk(key); mon.count('login'); give(res, u); res.json({ id: u.id, username: u.username, pub: u.pub, encPriv: u.encPriv });
 });
 app.post('/api/logout', (q, r) => { r.clearCookie('lynko'); r.json({ ok: 1 }); });
 
@@ -310,13 +347,17 @@ app.get('/api/ice', auth, (q, r) => {
   r.json(ice);
 });
 const CID = /^[a-f0-9]{16,32}$/;
+const SDPMAX = 20000;   // call setup now travels end-to-end encrypted (base64), so it is larger than raw SDP
+const callHits = new Map();
+const callLimited = id => { const n = Date.now(), a = (callHits.get(id) || []).filter(t => n - t < 6e4); a.push(n); callHits.set(id, a); if (callHits.size > 5e3) callHits.clear(); return a.length > 6; };
 const secs = d => d.answeredAt ? Math.max(0, Math.round((Date.now() - d.answeredAt.getTime()) / 1000)) : 0;
 app.post('/api/call', auth, async (req, res) => {
   const { type, cid, sdp } = req.body || {}, me = req.u.id;
   if (!CID.test(cid || '')) return res.status(400).json({ error: 'Bad call' });
   if (type === 'offer') {
     const to = String(req.body.to || '');
-    if (typeof sdp !== 'string' || sdp.length > 8500 || to === me) return res.status(400).json({ error: 'Bad call' });
+    if (typeof sdp !== 'string' || sdp.length > SDPMAX || to === me) return res.status(400).json({ error: 'Bad call' });
+    if (callLimited(me)) return res.status(429).json({ error: 'Too many calls. Try again in a minute.' });
     if (!(await U.findOne({ id: to, contacts: me }, { projection: { _id: 1 } }))) return res.status(404).json({ error: 'User not found' });
     if (await K.findOne({ st: { $in: ['ringing', 'active'] }, ts: { $gt: new Date(Date.now() - 3 * 36e5) }, $or: [{ from: to }, { to }] })) return res.json({ busy: 1 });
     await K.insertOne({ cid, from: me, to, st: 'ringing', ts: new Date(), offer: sdp }); mon.count('call');
@@ -328,7 +369,7 @@ app.post('/api/call', auth, async (req, res) => {
   if (!d) return res.status(404).json({ error: 'Call not found' });
   const other = d.from === me ? d.to : d.from;
   if (type === 'answer') {
-    if (d.to !== me || d.st !== 'ringing' || typeof sdp !== 'string' || sdp.length > 8500) return res.status(409).json({ error: 'Call is no longer ringing' });
+    if (d.to !== me || d.st !== 'ringing' || typeof sdp !== 'string' || sdp.length > SDPMAX) return res.status(409).json({ error: 'Call is no longer ringing' });
     await K.updateOne({ cid }, { $set: { st: 'active', answeredAt: new Date() }, $unset: { offer: 1 } });
     fire([other], 'call', { t: 'answer', cid, sdp }); return res.json({ ok: 1 });
   }
