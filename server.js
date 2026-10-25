@@ -84,18 +84,22 @@ try {
     webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:admin@example.com', process.env.VAPID_PUBLIC_KEY, process.env.VAPID_PRIVATE_KEY);
   } else console.warn('⚠ Push alerts disabled (set VAPID_PUBLIC_KEY + VAPID_PRIVATE_KEY — run: npm run vapid)');
 } catch (e) { console.warn('⚠ web-push not available:', e.message); webpush = null; }
-async function push(uid, payload) {
-  if (!webpush) return;
+async function push(uid, payload, force) {
+  if (!webpush) return false;
   try {
     const u = await U.findOne({ id: uid }, { projection: { push: 1, on: 1, lastSeen: 1 } });
-    if (!u || !u.push || !u.push.length) return;
+    if (!u || !u.push || !u.push.length) return false;
     // app is open and visible on the receiver -> realtime channel already delivers it
-    if (payload.type === 'msg' && u.on && u.lastSeen && Date.now() - u.lastSeen < 45e3) return;
+    if (!force && payload.type === 'msg' && u.on && u.lastSeen && Date.now() - u.lastSeen < 45e3) return false;
     const body = JSON.stringify(payload), opt = { TTL: payload.type === 'call' ? 30 : 86400, urgency: 'high' };
-    await Promise.all(u.push.map(sub => webpush.sendNotification(sub, body, opt).catch(e => {
-      if (e.statusCode === 404 || e.statusCode === 410) U.updateOne({ id: uid }, { $pull: { push: { endpoint: sub.endpoint } } }).catch(() => {});
+    const r = await Promise.all(u.push.map(sub => webpush.sendNotification(sub, body, opt).then(() => true, e => {
+      // 404/410 = subscription gone; 401/403 = it was made with a different VAPID key -> drop it, the phone re-subscribes the next time the app opens
+      if ([401, 403, 404, 410].includes(e.statusCode)) U.updateOne({ id: uid }, { $pull: { push: { endpoint: sub.endpoint } } }).catch(() => {});
+      console.warn('push failed', e.statusCode || '', String(e.body || e.message).slice(0, 160), '·', (sub.endpoint || '').slice(0, 48));
+      return false;
     })));
-  } catch (e) { console.error('push', e.message); }
+    return r.some(Boolean);
+  } catch (e) { console.error('push', e.message); return false; }
 }
 
 // ── Lynko AI (Groq) ──
@@ -215,7 +219,8 @@ app.get('/api/messages', auth, async (req, res) => {
 app.post('/api/media', auth, express.raw({ type: 'application/octet-stream', limit: '20mb' }), async (req, res) => {
   if (!store) return res.status(503).json({ error: 'Media storage is not configured on the server' });
   if (!Buffer.isBuffer(req.body) || req.body.length < 29) return res.status(400).json({ error: 'Empty file' });
-  mon.count('media'); res.json({ key: await store.put(req.u.id, req.body) });
+  try { const key = await store.put(req.u.id, req.body); mon.count('media'); res.json({ key }); }
+  catch (e) { console.error('media upload:', e.message); mon.logError('storage', e, { path: '/api/media', user: req.u.id }); res.status(502).json({ error: 'Media storage error — check the bucket settings (see server log)' }); }
 });
 // sender->receiver pairs already known to exist + linked as contacts: skips 3 DB round-trips on every message after the first
 const linked = new Set();
@@ -357,6 +362,11 @@ app.post('/api/push/subscribe', auth, async (req, res) => {
   await U.updateOne({ id: req.u.id }, { $push: { push: { $each: [{ endpoint: s.endpoint, keys: { p256dh: s.keys.p256dh, auth: s.keys.auth } }], $slice: -5 } } });
   res.json({ ok: 1 });
 });
+app.post('/api/push/test', auth, async (req, res) => {   // "Notifications on" sends this, so you immediately see if alerts reach the phone
+  if (!webpush) return res.status(503).json({ error: 'Push is not set up on the server (VAPID keys)' });
+  const ok = await push(req.u.id, { type: 'test', title: 'LYNKO CHAT', body: 'Notifications are working ♥', tag: 'test' }, true);
+  res.json({ ok });
+});
 app.post('/api/push/unsubscribe', auth, async (req, res) => {
   await U.updateOne({ id: req.u.id }, { $pull: { push: { endpoint: String((req.body && req.body.endpoint) || '') } } }); res.json({ ok: 1 });
 });
@@ -365,7 +375,7 @@ app.post('/api/push/unsubscribe', auth, async (req, res) => {
 let iceCache = { t: 0, v: null };
 async function iceServers() {   // STUN + a TURN relay: without a relay many mobile networks can't connect calls at all
   if (iceCache.v && Date.now() - iceCache.t < 10 * 6e4) return iceCache.v;
-  const ice = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }], E = process.env;
+  const ice = [{ urls: ['stun:stun.cloudflare.com:3478', 'stun:stun.l.google.com:19302', 'stun:stun1.l.google.com:19302'] }], E = process.env;
   try {
     if (E.CF_TURN_KEY_ID && E.CF_TURN_API_TOKEN) {   // Cloudflare Realtime TURN (free tier)
       const r = await fetch(`https://rtc.live.cloudflare.com/v1/turn/keys/${E.CF_TURN_KEY_ID}/credentials/generate-ice-servers`, { method: 'POST',
@@ -377,13 +387,16 @@ async function iceServers() {   // STUN + a TURN relay: without a relay many mob
     }
   } catch (e) { console.warn('turn lookup failed:', e.message); }
   if (E.TURN_URL) ice.push({ urls: E.TURN_URL.split(',').map(x => x.trim()), username: E.TURN_USER, credential: E.TURN_PASS });
-  if (!ice.some(x => [].concat(x.urls).some(u => /^turns?:/i.test(u))) && E.PUBLIC_TURN !== '0')   // last resort so calls work out of the box (shared, best-effort)
+  const hasTurn = ice.some(x => [].concat(x.urls).some(u => /^turns?:/i.test(u)));
+  if (!hasTurn && E.PUBLIC_TURN !== '0') {   // last resort so calls work out of the box (shared, best-effort, can be slow / full)
     ice.push({ urls: ['turn:openrelay.metered.ca:80', 'turn:openrelay.metered.ca:443', 'turn:openrelay.metered.ca:443?transport=tcp', 'turns:openrelay.metered.ca:443?transport=tcp'], username: 'openrelayproject', credential: 'openrelayproject' });
-  iceCache = { t: Date.now(), v: ice }; return ice;
+    console.warn('⚠ Calls use the shared public TURN relay. For reliable calls on mobile data set CF_TURN_KEY_ID + CF_TURN_API_TOKEN (free, Cloudflare) or METERED_DOMAIN + METERED_API_KEY (free, Metered)');
+  }
+  iceCache = { t: hasTurn ? Date.now() : Date.now() - 9 * 6e4, v: ice }; return ice;   // no real TURN yet: look again after a minute
 }
 app.get('/api/ice', auth, async (q, r) => { r.set('Cache-Control', 'no-store'); r.json(await iceServers()); });
 const CID = /^[a-f0-9]{16,32}$/;
-const SDPMAX = 20000;   // call setup now travels end-to-end encrypted (base64), so it is larger than raw SDP
+const SDPMAX = 20000, EVMAX = 6500;   // Pusher drops events over 10 KB; bigger call setups are fetched by the other phone instead   // call setup now travels end-to-end encrypted (base64), so it is larger than raw SDP
 const callHits = new Map();
 const callLimited = id => { const n = Date.now(), a = (callHits.get(id) || []).filter(t => n - t < 6e4); a.push(n); callHits.set(id, a); if (callHits.size > 5e3) callHits.clear(); return a.length > 6; };
 const secs = d => d.answeredAt ? Math.max(0, Math.round((Date.now() - d.answeredAt.getTime()) / 1000)) : 0;
@@ -399,7 +412,7 @@ app.post('/api/call', auth, async (req, res) => {
     if (await K.findOne({ $and: [{ $or: [{ from: to }, { to }] }, { $or: [{ st: 'ringing', ts: { $gt: new Date(nowT - 60e3) } }, { st: 'active', hb: { $gt: new Date(nowT - 90e3) } }] }] })) return res.json({ busy: 1 });
     await K.updateMany({ st: { $in: ['ringing', 'active'] }, $or: [{ from: me }, { to: me }] }, { $set: { st: 'ended', ended: new Date() }, $unset: { offer: 1 } });   // your own leftover call records
     await K.insertOne({ cid, from: me, to, st: 'ringing', ts: new Date(), offer: sdp }); mon.count('call');
-    fire([to], 'call', { t: 'offer', cid, from: me, sdp });
+    fire([to], 'call', sdp.length <= EVMAX ? { t: 'offer', cid, from: me, sdp } : { t: 'offer', cid, from: me });
     push(to, { type: 'call', title: req.u.u, body: 'Incoming voice call', tag: 'call', from: me });
     return res.json({ ok: 1 });
   }
@@ -408,26 +421,31 @@ app.post('/api/call', auth, async (req, res) => {
   const other = d.from === me ? d.to : d.from;
   if (type === 'answer') {
     if (d.to !== me || d.st !== 'ringing' || typeof sdp !== 'string' || sdp.length > SDPMAX) return res.status(409).json({ error: 'Call is no longer ringing' });
-    await K.updateOne({ cid }, { $set: { st: 'active', answeredAt: new Date(), hb: new Date() }, $unset: { offer: 1 } });
-    fire([other], 'call', { t: 'answer', cid, sdp }); return res.json({ ok: 1 });
+    await K.updateOne({ cid }, { $set: { st: 'active', answeredAt: new Date(), hb: new Date(), answer: sdp }, $unset: { offer: 1 } });
+    fire([other], 'call', sdp.length <= EVMAX ? { t: 'answer', cid, sdp } : { t: 'answer', cid }); return res.json({ ok: 1 });
   }
   if (type === 'hb') { await K.updateOne({ cid, st: 'active' }, { $set: { hb: new Date() } }); return res.json({ ok: 1 }); }
   if (type === 'reject' || type === 'end') {
     if (!['ringing', 'active'].includes(d.st)) return res.json({ ok: 1 });
     const st = d.st === 'ringing' ? (d.from === me ? 'missed' : 'declined') : 'ended';
-    await K.updateOne({ cid }, { $set: { st, dur: secs(d), ended: new Date() }, $unset: { offer: 1 } });
+    await K.updateOne({ cid }, { $set: { st, dur: secs(d), ended: new Date() }, $unset: { offer: 1, answer: 1 } });
     fire([other], 'call', { t: type, cid });
     if (st === 'missed') push(d.to, { type: 'missed', title: 'Missed voice call', body: 'from ' + req.u.u, tag: 'missed' + d.from, from: d.from });
     return res.json({ ok: 1 });
   }
   res.status(400).json({ error: 'Bad call' });
 });
+app.get('/api/call/:cid/answer', auth, async (req, res) => {   // caller fetches the answer when it was too big for a realtime event
+  if (!CID.test(req.params.cid)) return res.status(400).end();
+  const d = await K.findOne({ cid: req.params.cid, from: req.u.id, st: 'active' }, { projection: { answer: 1 } });
+  res.json({ sdp: (d && d.answer) || null });
+});
 app.get('/api/call/pending', auth, async (req, res) => {   // tapped a call alert while the app was closed
   const d = await K.findOne({ to: req.u.id, st: 'ringing', ts: { $gt: new Date(Date.now() - 45e3) } });
   res.json(d ? { cid: d.cid, from: d.from, sdp: d.offer, ts: d.ts.toISOString() } : null);
 });
 app.get('/api/calls', auth, async (req, res) => {
-  const l = await K.find({ $or: [{ from: req.u.id }, { to: req.u.id }] }, { projection: { offer: 0 } }).sort({ ts: -1 }).limit(60).toArray();
+  const l = await K.find({ $or: [{ from: req.u.id }, { to: req.u.id }] }, { projection: { offer: 0, answer: 0 } }).sort({ ts: -1 }).limit(60).toArray();
   res.json(l.map(d => ({ cid: d.cid, peer: d.from === req.u.id ? d.to : d.from, out: d.from === req.u.id, st: d.st, dur: d.dur || 0, ts: d.ts.toISOString() })));
 });
 
@@ -442,12 +460,19 @@ app.post('/api/ai', auth, async (req, res) => {
   if (!list.length || list[list.length - 1].role !== 'user') return res.status(400).json({ error: 'Bad request' });
   const ac = new AbortController(); res.on('close', () => ac.abort());
   let r;
+  const ask = model => fetch('https://api.groq.com/openai/v1/chat/completions', { method: 'POST', signal: ac.signal,
+    headers: { Authorization: 'Bearer ' + GROQ_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model, stream: true, temperature: 0.7, max_tokens: 1024, messages: [{ role: 'system', content: AI_SYS() }, ...list] }) });
   try {
-    r = await fetch('https://api.groq.com/openai/v1/chat/completions', { method: 'POST', signal: ac.signal,
-      headers: { Authorization: 'Bearer ' + GROQ_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: GROQ_MODEL, stream: true, temperature: 0.7, max_tokens: 1024, messages: [{ role: 'system', content: AI_SYS() }, ...list] }) });
+    for (const model of [...new Set([GROQ_MODEL, 'llama-3.3-70b-versatile', 'llama-3.1-8b-instant'])]) {   // a retired / rate-limited model falls through to the next one
+      r = await ask(model);
+      if (r.ok && r.body) break;
+      const t = (await r.text().catch(() => '')).slice(0, 300); console.error('groq', model, r.status, t);
+      if (r.status === 401) return res.status(502).json({ error: 'AI key is invalid — update GROQ_API_KEY on the server' });
+      if (![400, 404, 429, 503].includes(r.status)) break;
+    }
   } catch { return res.status(502).json({ error: 'AI is unreachable right now' }); }
-  if (!r.ok || !r.body) { console.error('groq', r.status, (await r.text().catch(() => '')).slice(0, 200)); return res.status(502).json({ error: r.status === 429 ? 'AI is busy, try again shortly' : 'AI error, try again' }); }
+  if (!r.ok || !r.body) return res.status(502).json({ error: r.status === 429 ? 'AI is busy, try again shortly' : 'AI error, try again' });
   mon.count('ai');
   res.set({ 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-cache, no-transform', 'X-Accel-Buffering': 'no' });
   const td = new TextDecoder(); let buf = '';
