@@ -38,6 +38,9 @@ const chan = id => 'private-u-' + id;
 const conv = (a, b) => [a, b].sort().join(':');
 const fire = (ids, ev, data) => { if (ids.length) pusher.trigger(ids.map(chan), ev, data).catch(() => {}); };
 const PUB = { _id: 0, id: 1, username: 1, pub: 1, about: 1, dpv: 1 };
+// phone numbers: digits only, local "0xxxxxxxxx" -> DEFAULT_CC + rest. The browser applies the same rule (cc comes from /api/config).
+const CC = String(process.env.DEFAULT_CC || '94').replace(/\D/g, '');
+const normPhone = raw => { let d = String(raw || '').replace(/\D/g, ''); if (d.startsWith('00')) d = d.slice(2); else if (d.startsWith('0')) d = CC + d.slice(1); return /^\d{8,15}$/.test(d) ? d : null; };
 
 // ── web push: message / call alerts even when the app is closed (messages stay E2E, so alerts carry no text) ──
 let webpush = null;
@@ -89,24 +92,27 @@ app.get('/sw.js', (q, r) => { r.set('Cache-Control', 'no-cache'); r.type('js').s
 app.get('/features.js', (q, r) => { r.set('Cache-Control', 'no-cache'); r.type('js').sendFile(path.join(__dirname, 'public/features.js')); });
 app.get('/icons/:name', require('./icons'));   // LYNKO CHAT logo -> app icons
 app.use(express.static(path.join(__dirname, 'public'), { maxAge: '7d', index: false }));
-app.get('/api/config', (q, r) => r.json({ key: process.env.PUSHER_KEY, cluster: process.env.PUSHER_CLUSTER, vapid: webpush ? process.env.VAPID_PUBLIC_KEY : null, ai: !!GROQ_KEY }));
+app.get('/api/config', (q, r) => r.json({ key: process.env.PUSHER_KEY, cluster: process.env.PUSHER_CLUSTER, cc: CC, vapid: webpush ? process.env.VAPID_PUBLIC_KEY : null, ai: !!GROQ_KEY }));
 
 // ── accounts ──
 app.post('/api/register', async (req, res) => {
-  const { username, auth: a, pub, encPriv } = req.body || {};
-  const name = String(username || '').toLowerCase();
-  if (!/^[a-z0-9_]{3,20}$/.test(name)) return res.status(400).json({ error: 'Username: 3-20 letters, numbers or _' });
+  const { phone, name, auth: a, pub, encPriv } = req.body || {};
+  const ph = normPhone(phone), nm = String(name || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 30);
+  if (!ph || ph !== String(phone)) return res.status(400).json({ error: 'Enter a valid phone number' });
+  if (!nm) return res.status(400).json({ error: 'Enter your name' });
   if (!/^[0-9a-f]{64}$/.test(a || '') || !pub || !encPriv) return res.status(400).json({ error: 'Bad request' });
   if (limited(req.ip)) return res.status(429).json({ error: 'Too many tries. Wait a few minutes.' });
   let id; do { id = String(crypto.randomInt(10000000, 99999999)); } while (await U.findOne({ id }));
-  try { await U.insertOne({ id, username: name, hash: await bcrypt.hash(a, 10), pub, encPriv, about: '', dpv: 0, contacts: [], createdAt: new Date() }); }
-  catch (e) { return res.status(409).json({ error: 'Username already taken' }); }
-  mon.count('reg'); give(res, { id, username: name }); res.json({ id, username: name });
+  try { await U.insertOne({ id, phone: ph, username: nm, hash: await bcrypt.hash(a, 10), pub, encPriv, about: '', dpv: 0, contacts: [], createdAt: new Date() }); }
+  catch (e) { return res.status(409).json({ error: 'This number is already registered. Log in instead.' }); }
+  mon.count('reg'); give(res, { id, username: nm }); res.json({ id, username: nm });
 });
 app.post('/api/login', async (req, res) => {
   if (limited(req.ip)) return res.status(429).json({ error: 'Too many tries. Wait a few minutes.' });
-  const u = await U.findOne({ username: String(req.body.username || '').toLowerCase() });
-  if (!u || !(await bcrypt.compare(String(req.body.auth || ''), u.hash))) { mon.count('loginFail'); return res.status(401).json({ error: 'Wrong username or password' }); }
+  const b = req.body || {}; let u = null;
+  if (b.phone) { const ph = normPhone(b.phone); if (ph) u = await U.findOne({ phone: ph }); }
+  else if (b.username) u = await U.findOne({ username: String(b.username).toLowerCase(), phone: { $exists: false } });   // accounts made before number login
+  if (!u || !(await bcrypt.compare(String(b.auth || ''), u.hash))) { mon.count('loginFail'); return res.status(401).json({ error: 'Wrong number or password' }); }
   mon.count('login'); give(res, u); res.json({ id: u.id, username: u.username, pub: u.pub, encPriv: u.encPriv });
 });
 app.post('/api/logout', (q, r) => { r.clearCookie('lynko'); r.json({ ok: 1 }); });
@@ -115,13 +121,14 @@ app.get('/api/me', auth, async (req, res) => {
   const me = await U.findOne({ id: req.u.id });
   if (!me) return res.status(401).json({ error: 'Login required' });
   const contacts = await U.find({ id: { $in: me.contacts } }, { projection: PUB }).toArray();
-  res.json({ id: me.id, username: me.username, pub: me.pub, about: me.about || '', dpv: me.dpv || 0, hideSeen: !!me.hideSeen, contacts });
+  res.json({ id: me.id, username: me.username, phone: me.phone || null, pub: me.pub, about: me.about || '', dpv: me.dpv || 0, hideSeen: !!me.hideSeen, contacts });
 });
 app.post('/api/contacts', auth, async (req, res) => {
-  const id = String(req.body.id || '').trim();
-  const p = await U.findOne({ id }, { projection: PUB });
-  if (!p || id === req.u.id) return res.status(404).json({ error: 'No user with that ID' });
-  await Promise.all([U.updateOne({ id: req.u.id }, { $addToSet: { contacts: id } }), U.updateOne({ id }, { $addToSet: { contacts: req.u.id } })]);
+  const raw = String(req.body.id || '').trim();
+  let p = /^\d{8}$/.test(raw) ? await U.findOne({ id: raw }, { projection: PUB }) : null;
+  if (!p) { const ph = normPhone(raw); if (ph) p = await U.findOne({ phone: ph }, { projection: PUB }); }
+  if (!p || p.id === req.u.id) return res.status(404).json({ error: 'No user with that number or ID' });
+  await Promise.all([U.updateOne({ id: req.u.id }, { $addToSet: { contacts: p.id } }), U.updateOne({ id: p.id }, { $addToSet: { contacts: req.u.id } })]);
   res.json(p);
 });
 
@@ -394,7 +401,7 @@ app.use((e, q, r, n) => {
   const db = cl.db(process.env.MONGODB_DB || 'lynko');
   U = db.collection('users'); M = db.collection('messages'); S = db.collection('statuses'); K = db.collection('calls');
   Object.assign(C, { db, U, M, S, E: db.collection('errors'), D: db.collection('stats'), O: db.collection('official') });
-  await U.createIndex({ id: 1 }, { unique: true }); await U.createIndex({ username: 1 }, { unique: true });
+  await U.createIndex({ id: 1 }, { unique: true }); try { await U.dropIndex('username_1'); } catch {} await U.createIndex({ username: 1 }); await U.createIndex({ phone: 1 }, { unique: true, sparse: true });
   await M.createIndex({ conv: 1, createdAt: 1 }); await M.createIndex({ createdAt: 1 }, { expireAfterSeconds: 86400 });
   await S.createIndex({ from: 1, createdAt: -1 }); await S.createIndex({ createdAt: 1 }, { expireAfterSeconds: 86400 });
   await U.createIndex({ createdAt: 1 }); await U.createIndex({ lastSeen: 1 });
