@@ -42,14 +42,15 @@ style.textContent = `#lockov{position:fixed;top:0;right:0;bottom:0;left:0;z-inde
 .lkc .lkgo:disabled{opacity:.6}#lkerr{min-height:20px;color:#ff8aa5;font-size:14px}.lkc .lkout{color:#c9a3b8;font-size:14px;padding:8px;text-decoration:underline}`;
 document.head.appendChild(style);
 const ov = document.createElement('div'); ov.id = 'lockov'; ov.hidden = true;
-ov.innerHTML = `<div class="lkc"><div class="lklogo">Lynko<i>♥</i></div><div class="lkav" id="lkav"></div><h3 id="lkn"></h3><p>Enter your password to open the app</p>
-<input id="lkp" type="password" placeholder="Password" autocomplete="current-password"><button class="lkgo" id="lkgo">Unlock</button><div id="lkerr"></div><button class="lkout" id="lkout">Not you? Log out</button></div>`;
+ov.innerHTML = `<form class="lkc" id="lkform" autocomplete="on"><div class="lklogo">Lynko<i>♥</i></div><div class="lkav" id="lkav"></div><h3 id="lkn"></h3><p>Enter your password to open the app</p>
+<input id="lkuser" type="text" name="username" autocomplete="username" tabindex="-1" aria-hidden="true" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0"><input id="lkp" type="password" name="password" placeholder="Password" autocomplete="current-password"><button class="lkgo" id="lkgo" type="button">Unlock</button><div id="lkerr"></div><button class="lkout" id="lkout" type="button">Not you? Log out</button></form>`;
+ov.querySelector('form').onsubmit = e => { e.preventDefault(); unlock() };
 document.body.appendChild(ov);
 
 function show() {
   locked = true; ov.hidden = false;
   const n = localStorage.getItem('lynko_name') || '';
-  $('lkn').textContent = n; $('lkav').textContent = (n || '♥')[0].toUpperCase(); $('lkp').value = ''; $('lkerr').textContent = '';
+  $('lkn').textContent = n; $('lkav').textContent = (n || '♥')[0].toUpperCase(); $('lkp').value = ''; $('lkerr').textContent = ''; $('lkuser').value = localStorage.getItem('lynko_ident') || '';
   setTimeout(() => $('lkp').focus(), 60);
 }
 async function unlock() {
@@ -60,9 +61,9 @@ async function unlock() {
   $('lkgo').disabled = false;
   if (!priv) { fail('app'); $('lkp').value = ''; const w2 = wait('app'); $('lkerr').textContent = w2 ? `Wrong password. Wait ${w2}s` : 'Wrong password'; return }
   clear('app'); sessionStorage.setItem('lynko_priv', priv);
-  locked = false; ov.hidden = true; $('lkp').value = ''; resolveReady();
+  locked = false; ov.hidden = true; $('lkp').value = ''; try { const q = document.getElementById('q'); if (q && q.value) { q.value = ''; q.dispatchEvent(new Event('input')) } } catch {} resolveReady();
 }
-$('lkgo').onclick = unlock; $('lkp').addEventListener('keydown', e => { if (e.key == 'Enter') unlock() });
+$('lkgo').onclick = unlock; $('lkp').addEventListener('keydown', e => { if (e.key == 'Enter') { e.preventDefault(); unlock() } });
 $('lkout').onclick = async () => {
   if (!confirm('Log out of this phone? You will need your password to log in again.')) return;
   try { await fetch('/api/logout', { method: 'POST' }) } catch {}
