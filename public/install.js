@@ -10,7 +10,25 @@
   };
   addEventListener('error', e => report(e.message, e.error && e.error.stack));
   addEventListener('unhandledrejection', e => report(e.reason && e.reason.message || e.reason, e.reason && e.reason.stack));
-  if ('serviceWorker' in navigator) addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+  // ── automatic updates: a new deploy reaches installed apps by itself (no re-install, no manual refresh) ──
+  if ('serviceWorker' in navigator) {
+    let hadCtl = !!navigator.serviceWorker.controller, pend = false;
+    const safe = () => !(window.F && F.inCall && F.inCall()) && !(typeof rc !== 'undefined' && rc) && !document.querySelector('.pvw,.tst,.sv')
+      && !(document.getElementById('txt') && document.getElementById('txt').value.trim());      // never interrupt a call, a recording or a half-written message
+    const reload = () => {
+      if (!pend || !safe()) return;
+      let last = 0; try { last = +sessionStorage.getItem('lk_ur') || 0; } catch {}
+      if (Date.now() - last < 60e3) return;                               // loop guard
+      try { sessionStorage.setItem('lk_ur', Date.now()); sessionStorage.setItem('lk_reload', '1'); } catch {}      // lk_reload: keep the unlocked key, no password prompt
+      location.reload();
+    };
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (!hadCtl) { hadCtl = true; return; } pend = true; reload(); setInterval(reload, 5000); });
+    addEventListener('load', () => navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then(reg => {
+      const chk = () => reg.update().catch(() => {});
+      document.addEventListener('visibilitychange', () => { if (!document.hidden) { chk(); reload(); } });
+      setInterval(chk, 30 * 60e3); setTimeout(chk, 4000);
+    }).catch(() => {}));
+  }
 
   const ua = navigator.userAgent;
   const isIOS = /iphone|ipad|ipod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
