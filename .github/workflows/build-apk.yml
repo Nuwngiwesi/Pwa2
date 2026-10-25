@@ -46,12 +46,15 @@ jobs:
               <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
               <uses-permission android:name="android.permission.CAMERA"/>
               <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
               <application android:label="LYNKO CHAT" android:icon="@mipmap/ic_launcher" android:allowBackup="false"
                   android:usesCleartextTraffic="false" android:theme="@android:style/Theme.Material.NoActionBar">
-                  <activity android:name=".MainActivity" android:exported="true" android:windowSoftInputMode="adjustResize"
+                  <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize"
                       android:configChanges="orientation|screenSize|keyboardHidden|smallestScreenSize|screenLayout">
                       <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
                   </activity>
+                  <service android:name=".KeepAliveService" android:exported="false" android:foregroundServiceType="dataSync"/>
               </application>
           </manifest>
           LYNKOEOF
@@ -63,6 +66,8 @@ jobs:
           import android.content.Intent;
           import android.graphics.Color;
           import android.net.Uri;
+          import android.content.pm.PackageManager;
+          import android.os.Build;
           import android.os.Bundle;
           import android.view.View;
           import android.view.WindowManager;
@@ -71,6 +76,14 @@ jobs:
           public class MainActivity extends Activity {
               WebView web;
               ValueCallback<Uri[]> picker;
+              volatile boolean bg = false;
+
+              class Bridge {
+                  @JavascriptInterface public boolean hasPerm() { return Build.VERSION.SDK_INT < 33 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED; }
+                  @JavascriptInterface public void askPerm() { runOnUiThread(() -> { if (Build.VERSION.SDK_INT >= 33) requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 2); }); }
+                  @JavascriptInterface public boolean bg() { return bg; }
+                  @JavascriptInterface public void notify(String title, String body, String tag) { Notifier.show(MainActivity.this, title, body, tag); }
+              }
 
               @Override protected void onCreate(Bundle b) {
                   super.onCreate(b);
@@ -78,7 +91,9 @@ jobs:
                   getWindow().setNavigationBarColor(Color.parseColor("#1a0713"));
                   getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);   // no screenshots (private chats)
                   requestPermissions(new String[]{Manifest.permission.RECORD_AUDIO, Manifest.permission.CAMERA, Manifest.permission.POST_NOTIFICATIONS}, 1);
+                  try { Intent sv = new Intent(this, KeepAliveService.class); if (Build.VERSION.SDK_INT >= 26) startForegroundService(sv); else startService(sv); } catch (Exception ignored) {}
                   web = new WebView(this);
+                  web.addJavascriptInterface(new Bridge(), "LynkoApp");
                   web.setBackgroundColor(Color.parseColor("#1a0713"));
                   setContentView(web);
                   WebSettings s = web.getSettings();
@@ -108,7 +123,76 @@ jobs:
               @Override protected void onActivityResult(int req, int res, Intent d) {
                   if (req == 7 && picker != null) { picker.onReceiveValue(WebChromeClient.FileChooserParams.parseResult(res, d)); picker = null; }
               }
+              @Override protected void onPause() { bg = true; super.onPause(); }   // the page is NOT paused, so it stays connected and can raise alerts
+              @Override protected void onResume() { bg = false; super.onResume(); }
               @Override public void onBackPressed() { if (web.canGoBack()) web.goBack(); else super.onBackPressed(); }
+          }
+          LYNKOEOF
+          cat > app/src/main/java/lk/lynko/chat/KeepAliveService.java <<'LYNKOEOF'
+          package lk.lynko.chat;
+
+          import android.app.Notification;
+          import android.app.Service;
+          import android.content.Intent;
+          import android.content.pm.ServiceInfo;
+          import android.os.Build;
+          import android.os.IBinder;
+
+          // keeps the app connected in the background so new-message alerts arrive when the app is closed to the home screen
+          public class KeepAliveService extends Service {
+              @Override public IBinder onBind(Intent i) { return null; }
+
+              @Override public int onStartCommand(Intent i, int flags, int id) {
+                  Notifier.channels(this);
+                  Notification n = Notifier.builder(this, "live").setSmallIcon(android.R.drawable.stat_notify_chat)
+                      .setContentTitle("LYNKO CHAT").setContentText("Connected — message alerts are on")
+                      .setOngoing(true).setContentIntent(Notifier.open(this)).build();
+                  if (Build.VERSION.SDK_INT >= 29) startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
+                  else startForeground(1, n);
+                  return START_STICKY;
+              }
+          }
+          LYNKOEOF
+          cat > app/src/main/java/lk/lynko/chat/Notifier.java <<'LYNKOEOF'
+          package lk.lynko.chat;
+
+          import android.app.Notification;
+          import android.app.NotificationChannel;
+          import android.app.NotificationManager;
+          import android.app.PendingIntent;
+          import android.content.Context;
+          import android.content.Intent;
+          import android.os.Build;
+
+          final class Notifier {
+              static final String CH = "msgs";
+
+              static void channels(Context c) {
+                  if (Build.VERSION.SDK_INT >= 26) {
+                      NotificationManager m = (NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE);
+                      m.createNotificationChannel(new NotificationChannel(CH, "Messages", NotificationManager.IMPORTANCE_HIGH));
+                      m.createNotificationChannel(new NotificationChannel("live", "Background connection", NotificationManager.IMPORTANCE_MIN));
+                  }
+              }
+
+              static PendingIntent open(Context c) {
+                  Intent i = new Intent(c, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+                  return PendingIntent.getActivity(c, 0, i, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+              }
+
+              @SuppressWarnings("deprecation")
+              static Notification.Builder builder(Context c, String channel) {
+                  if (Build.VERSION.SDK_INT >= 26) return new Notification.Builder(c, channel);
+                  return new Notification.Builder(c).setPriority(channel.equals(CH) ? Notification.PRIORITY_HIGH : Notification.PRIORITY_MIN);
+              }
+
+              static void show(Context c, String title, String body, String tag) {
+                  channels(c);
+                  Notification.Builder b = builder(c, CH)
+                      .setSmallIcon(android.R.drawable.stat_notify_chat).setContentTitle(title).setContentText(body)
+                      .setAutoCancel(true).setContentIntent(open(c));
+                  ((NotificationManager) c.getSystemService(Context.NOTIFICATION_SERVICE)).notify(tag == null ? 0 : tag.hashCode(), b.build());
+              }
           }
           LYNKOEOF
           cat > app/build.gradle <<'LYNKOEOF'
