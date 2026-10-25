@@ -53,9 +53,12 @@
         let hide = 0; try { hide = +localStorage.getItem('lynko-install-dismissed') || 0; } catch {}
         if (hide < Date.now()) {
           const bar = document.createElement('div');
-          bar.style.cssText = 'position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:99999;display:flex;align-items:center;gap:10px;padding:12px 14px;border-radius:18px;background:rgba(36,11,29,.97);border:1px solid rgba(255,255,255,.18);box-shadow:0 12px 40px rgba(0,0,0,.5);color:#fff0f5;font:500 14px "DM Sans",system-ui,sans-serif;max-width:460px;margin:0 auto';
+          const side = document.querySelector('.side'), nav = side && side.querySelector('.nav');
+          const look = 'display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:16px;background:rgba(36,11,29,.97);border:1px solid rgba(255,255,255,.18);color:#fff0f5;font:500 14px "DM Sans",system-ui,sans-serif';
+          // in the chat page the banner is a normal row above the bottom nav (never on top of it); other pages keep the floating bar
+          bar.style.cssText = nav ? look + ';flex:none;margin:6px 10px' : look + ';position:fixed;left:12px;right:12px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:99999;box-shadow:0 12px 40px rgba(0,0,0,.5);max-width:460px;margin:0 auto';
           bar.innerHTML = '<img src="/icons/icon-192.png" width="40" height="40" style="border-radius:10px"><div style="flex:1;line-height:1.3"><b>LYNKO CHAT app</b><div style="font-size:12px;color:#d6a6ba">Home screen ekata add karanna</div></div><button id="lyGo" style="border:0;border-radius:12px;padding:10px 16px;font:700 14px inherit;color:#fff;background:linear-gradient(135deg,#ff5c8a,#c14bff);cursor:pointer">Install</button><button id="lyX" aria-label="Close" style="border:0;background:none;color:#d6a6ba;font-size:20px;cursor:pointer">✕</button>';
-          document.body.appendChild(bar);
+          if (nav) side.insertBefore(bar, nav); else document.body.appendChild(bar);
           bar.querySelector('#lyGo').onclick = () => { window.lynkoInstall(); };
           bar.querySelector('#lyX').onclick = () => { bar.remove(); try { localStorage.setItem('lynko-install-dismissed', Date.now() + 7 * 864e5); } catch {} };
         }
