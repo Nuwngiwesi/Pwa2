@@ -171,14 +171,103 @@ function pcMake(stream) {
     stream.getTracks().forEach(t => pc.addTrack(t, stream));
     pc.ontrack = e => { const a = $('rau'); if (a) { a.srcObject = e.streams[0]; a.play().catch(() => {}) } };
     pc.onconnectionstatechange = () => {
-      if (pc.connectionState == 'connected' && Call.st != 'active') callActive();
-      if (pc.connectionState == 'failed') callDone('Call failed — ' + (relayIn(pc) ? 'could not connect (relay used)' : 'no relay address found (TURN not reachable)'), true);
-      if (pc.connectionState == 'disconnected') setTimeout(() => { if (Call.pc == pc && pc.connectionState == 'disconnected') callDone('Connection lost', true) }, 7000);
+      if (pc.connectionState == 'connected') { relayStop(); if (Call.st != 'active') callActive(); }
+      if (pc.connectionState == 'failed') { if (Call.pc == pc && RLY.ws) relayEngage(); else callDone('Call failed — ' + (relayIn(pc) ? 'could not connect (relay used)' : 'no relay address found'), true); }
+      if (pc.connectionState == 'disconnected') setTimeout(() => { if (Call.pc == pc && pc.connectionState == 'disconnected' && !RLY.send) callDone('Connection lost', true) }, 7000);
     };
     return pc;
     });
   });
 }
+
+// ───────────────────────── audio relay fallback (works on every network, no TURN needed) ─────────────────────────
+// If the direct phone-to-phone path can't be made in a few seconds, voice goes through the server instead: 16 kHz mu-law audio, each 40 ms
+// frame sealed with the same end-to-end key as chat (AES-GCM). The server only forwards ciphertext it cannot read.
+const RLY = { ws: null, ctx: null, src: null, proc: null, send: false, key: null, next: 0, pend: [], acc: 0, cnt: 0, ph: 0, tries: 0, fb: null };
+const RATE = 16000, FRAME = 640;
+const ulawEnc = x => { let sg = (x >> 8) & 0x80; if (sg) x = -x; if (x > 32635) x = 32635; x += 0x84; let e = 7; for (let m = 0x4000; (x & m) == 0 && e > 0; m >>= 1) e--; return (~(sg | (e << 4) | ((x >> (e + 3)) & 0x0F))) & 0xFF };
+const ulawDec = u => { u = ~u & 0xFF; const t = (((u & 0x0F) << 3) + 0x84) << ((u >> 4) & 7); return (u & 0x80) ? 0x84 - t : t - 0x84 };
+const pcConnected = () => !!(Call.pc && Call.pc.connectionState == 'connected');
+function rlyCtx() {   // call this from a tap (Call / Accept): browsers only start audio after one
+  try { if (!RLY.ctx || RLY.ctx.state == 'closed') RLY.ctx = new (window.AudioContext || window.webkitAudioContext)(); RLY.ctx.resume().catch(() => {}); } catch {}
+}
+function relayOpen() {
+  if (!window.WebSocket || !Call.cid || (RLY.ws && RLY.ws.readyState < 2)) return;
+  const cid = Call.cid;
+  try {
+    const ws = RLY.ws = new WebSocket((location.protocol == 'https:' ? 'wss://' : 'ws://') + location.host + '/api/relay?cid=' + cid);
+    ws.binaryType = 'arraybuffer';
+    ws.onmessage = ev => { if (typeof ev.data != 'string') relayPlay(ev.data) };
+    ws.onclose = () => {   // dropped while the call is still on: reconnect (a few tries)
+      if (RLY.ws !== ws) return; RLY.ws = null;
+      if (Call.cid == cid && Call.st != 'idle' && RLY.send && RLY.tries++ < 5) setTimeout(() => { if (Call.cid == cid) relayOpen() }, 800);
+    };
+  } catch {}
+}
+async function relayEngage() {   // start sending our voice through the server
+  if (RLY.send || Call.st == 'idle' || Call.st == 'incoming' || !Call.stream || pcConnected()) return;
+  relayOpen(); rlyCtx();
+  try {
+    RLY.key = await shared(Call.peer);
+    if (!RLY.ctx) return;
+    if (!RLY.proc) {
+      const c = RLY.ctx; RLY.src = c.createMediaStreamSource(Call.stream); RLY.proc = c.createScriptProcessor(2048, 1, 1);
+      const mute = c.createGain(); mute.gain.value = 0; RLY.src.connect(RLY.proc); RLY.proc.connect(mute); mute.connect(c.destination);
+      const ratio = c.sampleRate / RATE;
+      RLY.proc.onaudioprocess = e => {
+        if (!RLY.send) return;
+        const inp = e.inputBuffer.getChannelData(0);
+        for (let i = 0; i < inp.length; i++) {   // average down to 16 kHz, keeping the fractional position between blocks
+          RLY.acc += inp[i]; RLY.cnt++; RLY.ph += 1;
+          if (RLY.ph >= ratio) { RLY.ph -= ratio; RLY.pend.push(RLY.acc / RLY.cnt); RLY.acc = 0; RLY.cnt = 0; }
+        }
+        while (RLY.pend.length >= FRAME) {
+          const f = RLY.pend.splice(0, FRAME), u = new Uint8Array(FRAME);
+          for (let i = 0; i < FRAME; i++) u[i] = ulawEnc(Math.max(-32768, Math.min(32767, Math.round(f[i] * 32767))));
+          relaySend(u);
+        }
+      };
+    }
+    RLY.send = true; RLY.tries = 0;
+    if (Call.st != 'active') callStatus('Connecting via server…');
+  } catch (e) { console.warn('relay', e.message) }
+}
+async function relaySend(u) {
+  const ws = RLY.ws, cid = Call.cid;
+  if (!ws || ws.readyState != 1 || !RLY.key || !cid) return;
+  try {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: new TextEncoder().encode('lynko-audio|' + cid) }, RLY.key, u));
+    const out = new Uint8Array(12 + ct.length); out.set(iv); out.set(ct, 12);
+    if (ws.readyState == 1 && ws.bufferedAmount < 65536) ws.send(out);
+  } catch {}
+}
+async function relayPlay(buf) {
+  const cid = Call.cid; if (!cid || Call.st == 'idle' || Call.st == 'incoming' || pcConnected()) return;
+  try {
+    if (!RLY.key) RLY.key = await shared(Call.peer);
+    if (!RLY.send) relayEngage();   // the other phone already uses the server: do the same so both directions work
+    const b = new Uint8Array(buf); if (b.length < 29) return;
+    const pt = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b.subarray(0, 12), additionalData: new TextEncoder().encode('lynko-audio|' + cid) }, RLY.key, b.subarray(12)));
+    const c = RLY.ctx; if (!c) return;
+    const ab = c.createBuffer(1, pt.length, RATE), d = ab.getChannelData(0);
+    for (let i = 0; i < pt.length; i++) d[i] = ulawDec(pt[i]) / 32768;
+    const src = c.createBufferSource(); src.buffer = ab; src.connect(c.destination);
+    const now = c.currentTime;
+    if (RLY.next < now + 0.04) RLY.next = now + 0.18;     // small cushion against network jitter
+    if (RLY.next > now + 0.8) return;                      // way behind: drop this frame instead of growing a delay
+    src.start(RLY.next); RLY.next += pt.length / RATE;
+    if (Call.st != 'active') callActive();
+  } catch {}
+}
+function relayStop() { RLY.send = false; RLY.pend = []; RLY.acc = RLY.cnt = RLY.ph = 0 }   // the direct path worked
+function relayClose() {
+  relayStop(); clearTimeout(RLY.fb);
+  try { RLY.proc && (RLY.proc.onaudioprocess = null, RLY.proc.disconnect()); RLY.src && RLY.src.disconnect() } catch {}
+  RLY.proc = RLY.src = RLY.key = null; RLY.next = 0;
+  try { const w = RLY.ws; RLY.ws = null; w && w.close() } catch {}
+}
+const relayLater = () => { clearTimeout(RLY.fb); RLY.fb = setTimeout(() => { if (Call.st != 'idle' && !pcConnected()) relayEngage() }, 5000) };
 const mic = () => navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false });
 function callActive() {
   Call.st = 'active'; ringStop(); clearTimeout(Call.to); Call.t0 = Date.now(); callUI('active');
@@ -187,7 +276,7 @@ function callActive() {
 }
 function callDone(msg, notifyPeer) {
   if (notifyPeer && Call.cid) post('/api/call', { type: 'end', cid: Call.cid }).catch(() => {});
-  ringStop(); clearTimeout(Call.to); clearInterval(Call.tick); clearInterval(Call.hb);
+  ringStop(); clearTimeout(Call.to); clearInterval(Call.tick); clearInterval(Call.hb); relayClose();
   Call.pc?.close(); Call.stream?.getTracks().forEach(t => t.stop());
   Object.assign(Call, { st: 'idle', cid: null, peer: null, pc: null, stream: null, offer: null, muted: false, out: false });
   const o = $('callov'); if (o) { o.hidden = true; const a = $('rau'); if (a) a.srcObject = null }
@@ -198,7 +287,7 @@ async function callStart(peer) {
   if (Call.st != 'idle') return toast('You’re already in a call');
   if (!navigator.mediaDevices?.getUserMedia || !window.RTCPeerConnection) return toast('Calls aren’t supported in this browser');
   if (!navigator.onLine) return toast('No internet');
-  Call.st = 'calling'; Call.peer = peer; Call.cid = rid(); Call.out = true; callUI('calling'); callStatus('Starting…');
+  Call.st = 'calling'; Call.peer = peer; Call.cid = rid(); Call.out = true; callUI('calling'); callStatus('Starting…'); rlyCtx();
   try {
     Call.stream = await mic();
   } catch { callDone('Allow the microphone to make calls'); return }
@@ -207,7 +296,7 @@ async function callStart(peer) {
     await pc.setLocalDescription(await pc.createOffer()); await gathered(pc);
     const r = await api('/api/call', 'POST', { type: 'offer', to: peer, cid: Call.cid, sdp: await sealSdp(peer, Call.cid, 'offer', JSON.stringify(pc.localDescription)) });
     if (r.busy) return callDone(nm(peer) + ' is on another call');
-    callStatus('Ringing…'); ringStart('out');
+    relayOpen(); callStatus('Ringing…'); ringStart('out');
     Call.to = setTimeout(() => callDone('No answer', true), 45000);
   } catch (e) { callDone('Couldn’t start the call: ' + e.message, !!Call.cid) }
 }
@@ -220,7 +309,7 @@ function callIncoming(d) {
 }
 async function callAccept() {
   if (Call.st != 'incoming') return;
-  ringStop(); clearTimeout(Call.to); callStatus('Connecting…'); Call.st = 'connecting'; callUI('active'); callStatus('Connecting…');
+  ringStop(); clearTimeout(Call.to); rlyCtx(); callStatus('Connecting…'); Call.st = 'connecting'; callUI('active'); callStatus('Connecting…');
   try { Call.stream = await mic() } catch { callReject(); return toast('Allow the microphone to answer calls') }
   try {
     const pc = Call.pc = await pcMake(Call.stream);
@@ -228,6 +317,7 @@ async function callAccept() {
     await pc.setRemoteDescription(JSON.parse(off));
     await pc.setLocalDescription(await pc.createAnswer()); await gathered(pc);
     await api('/api/call', 'POST', { type: 'answer', cid: Call.cid, sdp: await sealSdp(Call.peer, Call.cid, 'answer', JSON.stringify(pc.localDescription)) });
+    relayOpen(); relayLater();
     Call.to = setTimeout(() => { if (Call.st == 'connecting') callDone('Couldn’t connect — ' + (Call.pc && relayIn(Call.pc) ? 'relay used' : 'no relay address (TURN not reachable)'), true) }, 30000);
   } catch (e) { callDone('Couldn’t answer: ' + e.message, true) }
 }
@@ -239,7 +329,7 @@ async function callEvent(d) {
   if (d.t == 'answer' && Call.pc && Call.out) {
     try {
       if (!d.sdp) for (let i = 0; i < 5 && !d.sdp; i++) { d.sdp = (await api('/api/call/' + Call.cid + '/answer')).sdp; if (!d.sdp) await new Promise(r => setTimeout(r, 400)) }
-      await Call.pc.setRemoteDescription(JSON.parse(await openSdp(Call.peer, Call.cid, 'answer', d.sdp))); Call.st = 'connecting'; callStatus('Connecting…'); ringStop(); clearTimeout(Call.to); Call.to = setTimeout(() => { if (Call.st == 'connecting') callDone('Couldn’t connect — ' + (Call.pc && relayIn(Call.pc) ? 'relay used' : 'no relay address (TURN not reachable)'), true) }, 30000) }
+      await Call.pc.setRemoteDescription(JSON.parse(await openSdp(Call.peer, Call.cid, 'answer', d.sdp))); Call.st = 'connecting'; callStatus('Connecting…'); ringStop(); clearTimeout(Call.to); relayOpen(); relayLater(); Call.to = setTimeout(() => { if (Call.st == 'connecting') callDone('Couldn’t connect — ' + (Call.pc && relayIn(Call.pc) ? 'relay used' : 'no relay address (TURN not reachable)'), true) }, 30000) }
     catch { callDone('Couldn’t connect', true) }
   } else if (d.t == 'reject') callDone(nm(Call.peer) + ' declined');
   else if (d.t == 'end') callDone(Call.st == 'active' ? 'Call ended' : Call.st == 'incoming' ? 'Missed call' : 'Call ended');
