@@ -57,10 +57,26 @@
   st2.textContent = '.pbn{width:100%;aspect-ratio:3/1;border-radius:18px;background:linear-gradient(135deg,#7f5cff,#ff5c8a) center/cover;display:grid;place-items:center;color:#fff;font-size:13px;cursor:pointer;margin-bottom:-6px}' +
     '.lx.cr{background:#000;z-index:90}.lx .cs{flex:1;display:grid;place-items:center;padding:16px;touch-action:none}.lx .cb{overflow:hidden;background:#222;box-shadow:0 0 0 2000px rgba(0,0,0,.62);touch-action:none}.lx .cb.round{border-radius:50%}.lx .cb canvas{display:block;touch-action:none;cursor:grab}' +
     '.lx .zr{display:flex;align-items:center;gap:12px;padding:12px 22px calc(18px + env(safe-area-inset-bottom));color:#fff0f5}.lx .zr input{flex:1;accent-color:#ff5c8a}' +
-    '.lx .pg .bn{height:150px;background:linear-gradient(135deg,#7f5cff,#ff5c8a) center/cover}.lx .pg .id{display:flex;flex-direction:column;align-items:center;margin-top:-52px;padding:0 20px;text-align:center}' +
-    '.lx .pg .av.big{width:104px;height:104px;font-size:42px;border:4px solid #120510;box-shadow:0 8px 24px rgba(0,0,0,.4)}.lx .pg h2{margin:12px 0 2px;font-size:24px;color:#fff0f5}.lx .pg .ab{color:#ffd9e6;max-width:420px;margin:6px 0 14px}' +
-    '.lx .pg .row{display:flex;gap:10px;justify-content:center;margin:6px 0 18px;flex-wrap:wrap}.lx .pg .row button{border:1px solid rgba(255,255,255,.18);background:rgba(255,255,255,.07);color:#fff0f5;border-radius:16px;padding:11px 16px;font:600 14px inherit;cursor:pointer}' +
-    '.lx .pg .box{margin:0 16px 12px;max-width:520px;align-self:center;background:#33152a;border-radius:16px;padding:12px 16px}.lx .pg .box small{display:block;color:#d6a6ba;font-size:12px;text-transform:uppercase;letter-spacing:.4px}' +
+    '.ov.sh{z-index:70}' +
+    '.lx.ci .bar{justify-content:space-between;position:sticky;top:0;z-index:3}.lx.ci .bar b{flex:1;text-align:center}.lx.ci .bar .sp{width:62px}' +
+    '.lx.ci .cin{padding:0 0 calc(30px + env(safe-area-inset-bottom));background:#120510}' +
+    '.ci .hero{position:relative;display:flex;flex-direction:column;align-items:center;text-align:center;padding:0 20px 4px}' +
+    '.ci .bnw{position:absolute;left:0;right:0;top:0;height:190px;background:linear-gradient(135deg,#7f5cff,#ff5c8a);overflow:hidden;-webkit-mask-image:linear-gradient(#000 45%,transparent);mask-image:linear-gradient(#000 45%,transparent)}' +
+    '.ci .bnw.nob{opacity:.4}.ci .bni{width:100%;height:100%;object-fit:cover;display:block;opacity:0;transition:opacity .35s}.ci .bni.on{opacity:1}' +
+    '.ci .avw{position:relative;margin-top:84px}.ci .av.big{width:112px;height:112px;font-size:46px;border:4px solid #120510;box-shadow:0 10px 28px rgba(0,0,0,.45)}' +
+    '.ci h2{position:relative;margin:12px 0 2px;font-size:25px;font-weight:700;letter-spacing:-.3px;color:#fff0f5;max-width:100%;overflow-wrap:anywhere}' +
+    '.ci .sub{position:relative;color:#d6a6ba;font-size:15px}.ci .sub:empty{display:none}' +
+    '.ci .acts{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;width:calc(100% - 32px);max-width:528px;margin:18px auto 14px}' +
+    '.ci .acts button{display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 4px 10px;border:0;border-radius:14px;background:#240b1d;color:#ff7aa2;font-family:inherit;font-weight:600;font-size:12px;line-height:1.2;cursor:pointer;-webkit-tap-highlight-color:transparent}' +
+    '.ci .acts button i{font-style:normal;font-size:23px;line-height:1}.ci .acts button:active{background:#33152a}' +
+    '.ci .g{width:calc(100% - 32px);max-width:528px;margin:0 auto 12px;background:#240b1d;border-radius:14px;overflow:hidden}' +
+    '.ci .ab{padding:12px 16px 14px}.ci .ab small{display:block;color:#d6a6ba;font-size:13px;margin-bottom:3px}.ci .ab div{font-size:16.5px;overflow-wrap:anywhere;white-space:pre-wrap}' +
+    '.ci .rw{display:flex;align-items:center;gap:12px;width:100%;min-height:52px;padding:9px 14px;border:0;border-bottom:1px solid rgba(255,255,255,.12);background:none;color:#fff0f5;font:inherit;font-size:16.5px;text-align:left;cursor:pointer;-webkit-tap-highlight-color:transparent}' +
+    '.ci .g>.rw:last-child{border-bottom:0}.ci .rw:active{background:rgba(255,255,255,.07)}.ci .rw.nc{cursor:default}.ci .rw.nc:active{background:none}' +
+    '.ci .rw .ic{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;font-size:17px;flex:none}' +
+    '.ci .rw .t{flex:1;min-width:0}.ci .rw .t small{display:block;color:#d6a6ba;font-size:12.5px;line-height:1.35;margin-top:1px}' +
+    '.ci .rw .v{color:#d6a6ba;font-size:15.5px;flex:none}.ci .rw.ch::after{content:"\\203A";color:#d6a6ba;font-size:24px;line-height:1;flex:none}' +
+    '.ci .rw.red .t{color:#ff6b81}.ci .foot{width:calc(100% - 32px);max-width:528px;margin:4px auto 0;padding:0 16px;color:#d6a6ba;font-size:12.5px;line-height:1.45;text-align:center}' +
     '#lxAi{position:fixed;right:16px;bottom:calc(84px + env(safe-area-inset-bottom));z-index:30;width:56px;height:56px;padding:0;overflow:hidden;border:2px solid rgba(255,255,255,.25);border-radius:19px;font-size:26px;cursor:pointer;color:#fff;background:linear-gradient(135deg,#7f5cff,#ff5c8a);box-shadow:0 8px 24px rgba(127,92,255,.45)}#lxAi img{width:100%;height:100%;object-fit:cover;display:block}#lxAi:active{transform:scale(.94)}#lxAi[hidden]{display:none}';
   document.head.appendChild(st2);
 
@@ -98,19 +114,40 @@
     });
   }
 
-  // contact info page: banner, big photo, name, about, ID, actions
+  // contact info page — WhatsApp (iOS) style: banner + big photo, name, action tiles, grouped cards, block / report
   function contact(c, a) {
-    const o = document.createElement('div'); o.className = 'lx';
-    o.innerHTML = '<div class="bar"><button data-x>‹ Back</button><b>Contact info</b></div><div class="bd pg" style="padding:0;display:flex;flex-direction:column"><div class="bn"></div><div class="id"><div class="avw"></div><h2></h2><div class="nm2" style="color:#d6a6ba;font-size:13px"></div></div></div>';
-    const pg = o.querySelector('.pg'); document.body.appendChild(o);
-    if (c.bnv) o.querySelector('.bn').style.backgroundImage = 'url(/api/banner/' + encodeURIComponent(c.id) + '?v=' + c.bnv + ')';
-    o.querySelector('.avw').innerHTML = a.avatar; o.querySelector('h2').textContent = c.username;
-    if (c.orig && c.orig !== c.username) o.querySelector('.nm2').textContent = 'Name on Lynko: ' + c.orig;
-    const mkBox = (l, t) => { const d = document.createElement('div'); d.className = 'box'; d.innerHTML = '<small></small><div></div>'; d.firstChild.textContent = l; d.lastChild.textContent = t; return d; };
-    const row = document.createElement('div'); row.className = 'row';
-    [['💬 Message', () => {}], ['📞 Call', a.call], ['✏️ Rename', a.rename], [a.locked ? '🔓 Unlock chat' : '🔒 Lock chat', a.lock]].forEach(([t, f]) => { const b = document.createElement('button'); b.textContent = t; b.onclick = () => { o.remove(); f && f(); }; row.appendChild(b); });
-    pg.appendChild(row); pg.appendChild(mkBox('About', c.about || 'Hey there! I’m using Lynko')); const idb = mkBox('Lynko ID · tap to copy', c.id); idb.onclick = () => { try { navigator.clipboard.writeText(c.id); } catch {} idb.firstChild.textContent = 'Copied ✓'; }; pg.appendChild(idb);
-    o.querySelector('[data-x]').onclick = () => o.remove();
+    const o = document.createElement('div'); o.className = 'lx ci';
+    o.innerHTML = '<div class="bar"><button data-x>‹ Back</button><b>Contact info</b><span class="sp"></span></div>' +
+      '<div class="bd cin"><div class="hero"><div class="bnw nob"><img class="bni" alt="" decoding="async"></div><div class="avw"></div><h2></h2><div class="sub"></div><div class="sub n2"></div></div>' +
+      '<div class="acts"></div><div class="g"><div class="ab"><small>About</small><div></div></div></div><div class="g info"></div><div class="g sec"></div><div class="g dng"></div>' +
+      '<p class="foot">Messages and calls with this contact are end-to-end encrypted. Chats disappear after 24 hours.</p></div>';
+    document.body.appendChild(o);
+    const q = s => o.querySelector(s), close = f => () => { o.remove(); f && f(); };
+    // banner: <img> fades in when decoded (the file is also pre-fetched + cached, so this is usually instant)
+    if (c.bnv) { const im = q('.bni'); im.onload = () => { im.classList.add('on'); q('.bnw').classList.remove('nob'); }; im.src = '/api/banner/' + encodeURIComponent(c.id) + '?v=' + c.bnv; }
+    q('.avw').innerHTML = a.avatar; q('h2').textContent = c.username;
+    q('.sub').textContent = 'ID ' + c.id; q('.n2').textContent = c.orig && c.orig !== c.username ? 'Name on Lynko: ' + c.orig : '';
+    q('.ab div').textContent = c.about || 'Hey there! I’m using Lynko';
+    const acts = q('.acts');
+    [['💬', 'Message', close()], ['📞', 'Call', close(a.call)], ['✏️', 'Edit', close(a.rename)], [a.locked ? '🔓' : '🔒', a.locked ? 'Unlock' : 'Lock', close(a.lock)]].forEach(([ic, t, f]) => {
+      const b = document.createElement('button'); b.innerHTML = '<i></i><span></span>'; b.firstChild.textContent = ic; b.lastChild.textContent = t; b.onclick = f; acts.appendChild(b);
+    });
+    const row = (box, ic, bg, t, { sub = '', val = '', red = 0, chev = 0, nc = 0, on } = {}) => {
+      const b = document.createElement(nc ? 'div' : 'button'); b.className = 'rw' + (chev ? ' ch' : '') + (red ? ' red' : '') + (nc ? ' nc' : '');
+      b.innerHTML = '<span class="ic"></span><span class="t"><span></span><small></small></span><span class="v"></span>';
+      b.children[0].style.background = bg; b.children[0].textContent = ic; b.querySelector('.t span').textContent = t;
+      const sm = b.querySelector('small'); sub ? sm.textContent = sub : sm.remove(); b.querySelector('.v').textContent = val; if (!val) b.querySelector('.v').remove();
+      if (on) b.onclick = on; q(box).appendChild(b); return b;
+    };
+    const idr = row('.info', '🆔', '#8e8e93', 'Lynko ID', { val: c.id });
+    idr.onclick = () => { try { navigator.clipboard.writeText(c.id); } catch {} idr.querySelector('.v').textContent = 'Copied ✓'; };
+    row('.info', '⏱', '#ff9f0a', 'Disappearing messages', { val: '24 hours', nc: 1 });
+    row('.sec', '🔒', '#ff5c8a', 'Chat lock', { val: a.locked ? 'On' : 'Off', chev: 1, on: close(a.lock) });
+    row('.sec', '🔐', '#34c759', 'Encryption', { sub: 'End-to-end encrypted. Tap to learn more.', chev: 1, on: () => { o.remove(); window.LX.legal && window.LX.legal('privacy'); } });
+    if (a.block) row('.dng', '🚫', '#ff3b30', (a.blocked ? 'Unblock ' : 'Block ') + c.username, { red: 1, on: close(a.block) });
+    if (a.report) row('.dng', '⚠️', '#ff9f0a', 'Report ' + c.username, { red: 1, on: close(a.report) });
+    if (!q('.dng').children.length) q('.dng').remove();
+    q('[data-x]').onclick = () => o.remove();
   }
   window.LX = { help, legal, crop, contact };
 
