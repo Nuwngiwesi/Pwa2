@@ -401,7 +401,10 @@ app.use((e, q, r, n) => {
   const db = cl.db(process.env.MONGODB_DB || 'lynko');
   U = db.collection('users'); M = db.collection('messages'); S = db.collection('statuses'); K = db.collection('calls');
   Object.assign(C, { db, U, M, S, E: db.collection('errors'), D: db.collection('stats'), O: db.collection('official') });
-  await U.createIndex({ id: 1 }, { unique: true }); try { await U.dropIndex('username_1'); } catch {} await U.createIndex({ username: 1 }); await U.createIndex({ phone: 1 }, { unique: true, sparse: true });
+  await U.createIndex({ id: 1 }, { unique: true }); try { await U.dropIndex('username_1'); } catch {} await U.createIndex({ username: 1 });
+  const phoneIx = { unique: true, partialFilterExpression: { phone: { $type: 'string' } } };
+  try { await U.createIndex({ phone: 1 }, phoneIx); }
+  catch (e) { if (e.code !== 85 && e.code !== 86) throw e; try { await U.dropIndex('phone_1'); } catch {} await U.createIndex({ phone: 1 }, phoneIx); }   // an older phone index with different options: rebuild it
   await M.createIndex({ conv: 1, createdAt: 1 }); await M.createIndex({ createdAt: 1 }, { expireAfterSeconds: 86400 });
   await S.createIndex({ from: 1, createdAt: -1 }); await S.createIndex({ createdAt: 1 }, { expireAfterSeconds: 86400 });
   await U.createIndex({ createdAt: 1 }); await U.createIndex({ lastSeen: 1 });
