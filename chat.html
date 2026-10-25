@@ -268,6 +268,7 @@ if(vv){vv.addEventListener('resize',f);vv.addEventListener('scroll',f)}document.
 <script src="/lock.js?v={{V}}"></script>
 <script src="/features.js?v={{V}}"></script>
 <script src="/emoji.js?v={{V}}" defer></script>
+<script src="/extras.js?v={{V}}"></script>
 <script>
 const $=id=>document.getElementById(id), enc=new TextEncoder(), dec=new TextDecoder();
 const hex=b=>[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('');
@@ -354,12 +355,19 @@ function profile(){
   o.querySelector('#pfile').onchange=async e=>{const f=e.target.files[0];if(!f)return;const bm=await createImageBitmap(f),s=Math.min(bm.width,bm.height),c=document.createElement('canvas');
     c.width=c.height=256;c.getContext('2d').drawImage(bm,(bm.width-s)/2,(bm.height-s)/2,s,s,0,0,256,256);dp=c.toDataURL('image/jpeg',.8).split(',')[1];paint()};
   o.querySelector('#psv').onclick=async()=>{try{const hs=o.querySelector('#phs').checked,r=await api('/api/profile','POST',{about:o.querySelector('#pab').value,dp,hideSeen:hs});me.about=r.about;me.dpv=r.dpv;me.hideSeen=hs;if(pai)F.aiToggle(pai.checked);paintMe();o.remove();toast('Saved ♥')}catch(e){toast(e.message)}}}
+const NK={all(){try{return JSON.parse(localStorage.getItem('lk_nick')||'{}')}catch{return{}}},set(id,n){const a=this.all();n?a[id]=n:delete a[id];try{localStorage.setItem('lk_nick',JSON.stringify(a))}catch{}}};
+function nick(c){if(c){if(c.orig==null)c.orig=c.username;c.username=NK.all()[c.id]||c.orig}return c}
+function renameContact(id){const c=contacts.get(id);if(!c)return;
+  const o=sheet(`<div class="pf"><h3 style="margin:0">Rename contact</h3><small style="color:var(--mut)">Only you see this name. Original: <span id="rno"></span></small><input id="rni" maxlength="30" placeholder="Name"><button class="btn p" style="width:100%" id="rns">Save</button><button class="btn" style="width:100%" id="rnr">Use original name</button></div>`);
+  o.querySelector('#rno').textContent=c.orig;const i=o.querySelector('#rni');i.value=c.username;setTimeout(()=>i.focus(),50);
+  const done=n=>{NK.set(id,n);nick(c);o.remove();if(cur==id)$('hn').textContent=c.username;renderList();toast('Saved ♥')};
+  o.querySelector('#rns').onclick=()=>{const n=i.value.trim();done(n&&n!==c.orig?n:'')};o.querySelector('#rnr').onclick=()=>done('');i.addEventListener('keydown',e=>{if(e.key=='Enter')o.querySelector('#rns').click()})}
 function addContact(){
-  const o=sheet(`<div class="pf"><h3 style="margin:0">Add contact</h3><input id="nid" placeholder="Friend’s phone number or 8-digit ID" inputmode="tel" autocomplete="off"><button class="btn p" style="width:100%" id="ngo">Add contact</button><div class="idbox">Your ID — tap to copy<b>${me.id}</b></div></div>`);
+  const o=sheet(`<div class="pf"><h3 style="margin:0">Add contact</h3><input id="nid" placeholder="Friend’s phone number or 8-digit ID" inputmode="tel" autocomplete="off"><input id="nnm" maxlength="30" placeholder="Save as (optional name)" autocomplete="off"><button class="btn p" style="width:100%" id="ngo">Add contact</button><div class="idbox">Your ID — tap to copy<b>${me.id}</b></div></div>`);
   const inp=o.querySelector('#nid');setTimeout(()=>inp.focus(),50);
   o.querySelector('.idbox').onclick=()=>{navigator.clipboard?.writeText(me.id);toast('ID copied')};
   const go=async()=>{const id=inp.value.trim();if(!/\d{6,}/.test(id))return toast('Enter a phone number or 8-digit ID');
-    try{const had=contacts.has(id),p=await api('/api/contacts','POST',{id});contacts.set(p.id,p);o.remove();toast(had?'Already in your contacts':'Contact added ♥');openChat(p.id)}catch(e){toast(e.message)}};
+    try{const had=contacts.has(id),p=await api('/api/contacts','POST',{id});const sn=o.querySelector('#nnm').value.trim();if(sn)NK.set(p.id,sn);contacts.set(p.id,nick(p));o.remove();toast(had?'Already in your contacts':'Contact added ♥');openChat(p.id)}catch(e){toast(e.message)}};
   o.querySelector('#ngo').onclick=go;inp.addEventListener('keydown',e=>{if(e.key=='Enter')go()})}
 function paintMe(){$('meb').innerHTML=av(me)}
 
@@ -413,7 +421,7 @@ async function setLast(peer,m,unread,live){
   const u=unread!==undefined?unread:(live&&m.from!=me.id?(old.unread||0)+1:old.unread||0);
   chats.set(peer,{m,txt:pvText(p),unread:peer==cur&&!document.hidden?0:u})}
 async function loadChats(){const d=await api('/api/chats');await Promise.all(d.map(x=>setLast(x.peer,x.last,x.unread)));renderList()}
-async function loadContacts(){const d=await api('/api/me');Object.assign(me,{about:d.about,dpv:d.dpv});contacts=new Map(d.contacts.map(c=>[c.id,c]));paintMe();renderList()}
+async function loadContacts(){const d=await api('/api/me');Object.assign(me,{about:d.about,dpv:d.dpv});contacts=new Map(d.contacts.map(c=>[c.id,nick(c)]));paintMe();renderList()}
 let flt='all',qs='';
 // ── Locked chats: hidden until the SECRET CODE is typed in the search bar ──
 function syncChips(){
@@ -813,7 +821,7 @@ const sGrp=(h,f='')=>`<div class="sg">${h}</div>${f?`<div class="sf">${f}</div>`
 const sRow=(ic,bg,t,{sub='',val='',a='',red=0,chev=1}={})=>`<button class="sr${chev?' ch':''}${red?' red':''}" data-a="${a}"><span class="si" style="background:${bg}">${ic}</span><span class="st">${t}${sub?`<small>${sub}</small>`:''}</span>${val?`<span class="sv2">${val}</span>`:''}</button>`;
 const sSw=(ic,bg,t,k,{sub='',on=false,dis=false}={})=>`<label class="sr"><span class="si" style="background:${bg}">${ic}</span><span class="st">${t}${sub?`<small>${sub}</small>`:''}</span><input type="checkbox" class="ios" data-k="${k}"${on?' checked':''}${dis?' disabled':''}></label>`;
 let setPg='main';
-const isInstalled=()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
+const isInstalled=()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone===true||/LynkoApp/.test(navigator.userAgent);
 const CALLNOTE='🔐 Voice calls are end-to-end encrypted. The call setup is sealed with your chat keys, so not even the Lynko server can read it or swap it, and the audio is encrypted phone-to-phone.';
 function setHtml(){
   const top=(back)=>`<div class="stb">${back?'<button data-a="back">‹ Settings</button>':'<span></span>'}<button data-a="done">Done</button></div>`;
@@ -840,6 +848,8 @@ function setHtml(){
       +sRow('🖼','#32ade6','Wallpaper',{a:'wall'})
       +(F.cfgAi()?sSw('✨','#af52de','Lynko AI','ai',{on:F.aiOn(),sub:'Not end-to-end encrypted'}):'')
       +sRow('➕','#34c759','Add contact',{a:'add'}))
+    +((/android/i.test(navigator.userAgent)&&!isInstalled())?sGrp(sRow('📥','#34c759','Download Android app (APK)',{a:'apk',sub:'Real app — updates itself when the site updates'})):'')
+    +sGrp(sRow('🆘','#ff9f0a','Help center',{a:'help',sub:'Ask the assistant how to use Lynko'})+sRow('📄','#8e8e93','Terms of Service',{a:'terms'})+sRow('🔐','#8e8e93','Privacy Policy',{a:'privacy'}))
     +sGrp(sRow('🆔','#8e8e93','My ID',{a:'id',val:me.id,chev:0})+sRow('⎋','#ff3b30','Log out',{a:'logout',red:1,chev:0}),'Lynko ♥ · everything vanishes after 24 hours · messages are end-to-end encrypted')
 }
 function settings(pg){
@@ -861,6 +871,9 @@ async function onSetClick(e){
   else if(a=='notif'){await F.notifOn();if($('setov'))settings(setPg)}
   else if(a=='install'){if(window.lynkoInstall)lynkoInstall();else toast('Open the browser menu → Install app')}
   else if(a=='wall')wallpaper();
+  else if(a=='apk'){if(window.lynkoInstall)lynkoInstall()}
+  else if(a=='help')LX.help();
+  else if(a=='terms'||a=='privacy')LX.legal(a);
   else if(a=='add'){o.remove();addContact()}
   else if(a=='id'){navigator.clipboard?.writeText(me.id);toast('ID copied')}
   else if(a=='logout'){if(confirm('Log out of this phone?')){await fetch('/api/logout',{method:'POST'});leave()}}}
@@ -884,8 +897,8 @@ document.querySelectorAll('#chips button').forEach(b=>b.onclick=()=>{flt=b.datas
 $('n1').onclick=()=>{if(tab!='chats')setTab('chats');else $('list').scrollTo({top:0,behavior:'smooth'})};$('n4').onclick=()=>setTab('status');$('n5').onclick=()=>setTab('calls');$('n2').onclick=wallpaper;$('n3').onclick=()=>settings();
 $('menub').onclick=()=>items([['⚙️ Settings',()=>settings()],['👤 Profile & About',profile],['🔔 Notifications',F.notifOn],['🖼 Wallpaper',wallpaper],['➕ Add contact',addContact],['⎋ Log out',async()=>{await fetch('/api/logout',{method:'POST'});leave()}]]);
 $('hav').onclick=()=>{if(cur=='official'){const o=sheet(`<div class="pf">${offAv('big')}<h3 style="margin:0">Lynko Official${VF}</h3><p style="color:var(--mut);text-align:center">Official news and updates from the Lynko team.<br>You can’t reply in this channel.</p></div>`);return}const c=contacts.get(cur);if(!c)return;const o=sheet(`<div class="pf">${av(c,'big')}<h3 style="margin:0"></h3><p style="color:var(--mut);text-align:center"></p><div class="idbox">ID<b>${c.id}</b></div></div>`);
-  o.querySelector('h3').textContent=c.username;o.querySelector('p').textContent=c.about||'Hey there! I’m using Lynko'};
-$('hmenu').onclick=()=>cur=='ai'?items([['🖼 Wallpaper',wallpaper],['🧹 Clear AI chat',F.aiClear]]):cur=='official'?items([['🖼 Wallpaper',wallpaper]]):items([['🖼 Wallpaper',wallpaper],[LOCK.chat.has(cur)?'🔓 Unlock this chat':'🔒 Lock this chat',()=>LOCK.chat.toggle(cur)]]);
+  o.querySelector('h3').textContent=c.username;o.querySelector('p').textContent=c.about||'Hey there! I’m using Lynko';const rb=document.createElement('button');rb.className='btn p';rb.style.width='100%';rb.textContent='✏️ Rename contact';rb.onclick=()=>{o.remove();renameContact(c.id)};o.querySelector('.pf').appendChild(rb)};
+$('hmenu').onclick=()=>cur=='ai'?items([['🖼 Wallpaper',wallpaper],['🧹 Clear AI chat',F.aiClear]]):cur=='official'?items([['🖼 Wallpaper',wallpaper]]):items([['✏️ Rename contact',()=>renameContact(cur)],['🖼 Wallpaper',wallpaper],[LOCK.chat.has(cur)?'🔓 Unlock this chat':'🔒 Lock this chat',()=>LOCK.chat.toggle(cur)]]);
 document.addEventListener('visibilitychange',()=>{
   if(document.hidden)recCancel();
   if(document.hidden&&cur&&LOCK.chat.has(cur)){closeChat()}
@@ -896,7 +909,7 @@ document.addEventListener('visibilitychange',()=>{
   await LOCK.ready;const pj=sessionStorage.getItem('lynko_priv');if(!pj)return leave();
   let cfg;try{[me,cfg]=await Promise.all([api('/api/me'),api('/api/config')])}catch{return}
   priv=await crypto.subtle.importKey('jwk',JSON.parse(pj),{name:'ECDH',namedCurve:'P-256'},false,['deriveKey']);
-  contacts=new Map(me.contacts.map(c=>[c.id,c]));paintMe();applyWp();try{renderList()}catch(e){console.error(e)}loadChats().catch(()=>{});loadStatuses().catch(()=>{});loadOfficial().catch(()=>{});
+  contacts=new Map(me.contacts.map(c=>[c.id,nick(c)]));paintMe();applyWp();try{renderList()}catch(e){console.error(e)}loadChats().catch(()=>{});loadStatuses().catch(()=>{});loadOfficial().catch(()=>{});
   if(typeof Pusher==='undefined')await new Promise(r=>{const e=$('pjs');if(!e)return r();e.addEventListener('load',r);e.addEventListener('error',r);setTimeout(r,5000)});
   if(typeof Pusher==='undefined')return;   // offline: show saved chats only
   const ps=new Pusher(cfg.key,{cluster:cfg.cluster,channelAuthorization:{endpoint:'/api/pusher/auth'}}),ch=ps.subscribe('private-u-'+me.id);
