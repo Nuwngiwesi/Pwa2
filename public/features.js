@@ -117,10 +117,15 @@ const Call = { st: 'idle', cid: null, peer: null, pc: null, stream: null, offer:
 const rid = () => [...crypto.getRandomValues(new Uint8Array(12))].map(b => b.toString(16).padStart(2, '0')).join('');
 let iceCache = null;
 const ice = async () => iceCache || (iceCache = await api('/api/ice').catch(() => [{ urls: 'stun:stun.l.google.com:19302' }]));
+// Waits until the phone has found its addresses. On mobile data the RELAY address (TURN) is the one that matters and it arrives last,
+// so we wait for it (up to 9 s) instead of cutting off after 3 s like before.
+const relayIn = pc => /typ relay/.test((pc.localDescription && pc.localDescription.sdp) || '');
 const gathered = pc => new Promise(r => {
   if (pc.iceGatheringState == 'complete') return r();
-  const t = setTimeout(r, 3000);
-  pc.addEventListener('icegatheringstatechange', () => { if (pc.iceGatheringState == 'complete') { clearTimeout(t); r() } });
+  let done = false; const fin = () => { if (done) return; done = true; clearTimeout(t); clearTimeout(g); r() };
+  const t = setTimeout(fin, 9000); let g = null;
+  pc.addEventListener('icecandidate', e => { if (e.candidate && /typ relay/.test(e.candidate.candidate) && !g) g = setTimeout(fin, 700) });
+  pc.addEventListener('icegatheringstatechange', () => { if (pc.iceGatheringState == 'complete') fin() });
 });
 // Call setup (SDP: DTLS fingerprint + network addresses) is sealed with the same end-to-end key as chat messages (ECDH -> AES-GCM),
 // bound to the call id / direction / sender. The server only relays ciphertext, so it can't read your IP or swap in its own fingerprint.
@@ -167,7 +172,7 @@ function pcMake(stream) {
     pc.ontrack = e => { const a = $('rau'); if (a) { a.srcObject = e.streams[0]; a.play().catch(() => {}) } };
     pc.onconnectionstatechange = () => {
       if (pc.connectionState == 'connected' && Call.st != 'active') callActive();
-      if (pc.connectionState == 'failed') callDone('Call failed — check your connection', true);
+      if (pc.connectionState == 'failed') callDone('Call failed — ' + (relayIn(pc) ? 'could not connect (relay used)' : 'no relay address found (TURN not reachable)'), true);
       if (pc.connectionState == 'disconnected') setTimeout(() => { if (Call.pc == pc && pc.connectionState == 'disconnected') callDone('Connection lost', true) }, 7000);
     };
     return pc;
@@ -223,7 +228,7 @@ async function callAccept() {
     await pc.setRemoteDescription(JSON.parse(off));
     await pc.setLocalDescription(await pc.createAnswer()); await gathered(pc);
     await api('/api/call', 'POST', { type: 'answer', cid: Call.cid, sdp: await sealSdp(Call.peer, Call.cid, 'answer', JSON.stringify(pc.localDescription)) });
-    Call.to = setTimeout(() => { if (Call.st == 'connecting') callDone('Couldn’t connect', true) }, 20000);
+    Call.to = setTimeout(() => { if (Call.st == 'connecting') callDone('Couldn’t connect — ' + (Call.pc && relayIn(Call.pc) ? 'relay used' : 'no relay address (TURN not reachable)'), true) }, 30000);
   } catch (e) { callDone('Couldn’t answer: ' + e.message, true) }
 }
 function callReject() { if (Call.cid) post('/api/call', { type: 'reject', cid: Call.cid }).catch(() => {}); callDone('') }
@@ -234,7 +239,7 @@ async function callEvent(d) {
   if (d.t == 'answer' && Call.pc && Call.out) {
     try {
       if (!d.sdp) for (let i = 0; i < 5 && !d.sdp; i++) { d.sdp = (await api('/api/call/' + Call.cid + '/answer')).sdp; if (!d.sdp) await new Promise(r => setTimeout(r, 400)) }
-      await Call.pc.setRemoteDescription(JSON.parse(await openSdp(Call.peer, Call.cid, 'answer', d.sdp))); Call.st = 'connecting'; callStatus('Connecting…'); ringStop(); clearTimeout(Call.to); Call.to = setTimeout(() => { if (Call.st == 'connecting') callDone('Couldn’t connect', true) }, 20000) }
+      await Call.pc.setRemoteDescription(JSON.parse(await openSdp(Call.peer, Call.cid, 'answer', d.sdp))); Call.st = 'connecting'; callStatus('Connecting…'); ringStop(); clearTimeout(Call.to); Call.to = setTimeout(() => { if (Call.st == 'connecting') callDone('Couldn’t connect — ' + (Call.pc && relayIn(Call.pc) ? 'relay used' : 'no relay address (TURN not reachable)'), true) }, 30000) }
     catch { callDone('Couldn’t connect', true) }
   } else if (d.t == 'reject') callDone(nm(Call.peer) + ' declined');
   else if (d.t == 'end') callDone(Call.st == 'active' ? 'Call ended' : Call.st == 'incoming' ? 'Missed call' : 'Call ended');
