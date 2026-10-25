@@ -193,6 +193,8 @@ app.post('/api/profile', auth, async (req, res) => {
   const set = {};
   if (typeof req.body.about === 'string') set.about = req.body.about.slice(0, 120);
   if (typeof req.body.hideSeen === 'boolean') set.hideSeen = req.body.hideSeen;
+  let newName = null;
+  if (typeof req.body.name === 'string') { newName = req.body.name.replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 30); if (newName) set.username = newName; }
   if (req.body.dp) {
     if (String(req.body.dp).length > 150000) return res.status(400).json({ error: 'Photo too large' });
     set.dp = Buffer.from(req.body.dp, 'base64'); set.dpv = Date.now();
@@ -200,7 +202,8 @@ app.post('/api/profile', auth, async (req, res) => {
   await U.updateOne({ id: req.u.id }, { $set: set });
   const u = await U.findOne({ id: req.u.id }, { projection: { contacts: 1, about: 1, dpv: 1 } });
   fire(u.contacts, 'prof', { id: req.u.id });
-  res.json({ about: u.about, dpv: u.dpv });
+  if (newName) give(res, { id: req.u.id, username: newName });   // refresh the login cookie with the new name
+  res.json({ about: u.about, dpv: u.dpv, username: newName || undefined });
 });
 app.get('/api/dp/:id', auth, async (req, res) => {
   const u = await U.findOne({ id: req.params.id }, { projection: { dp: 1 } });
@@ -479,7 +482,7 @@ ABOUT THE LYNKO CHAT APP (you live inside it — explain any part of it when ask
 - Log out: menu ⋮ → Log out. If someone forgets the password, the account can't be recovered because of the encryption — say so honestly.
 If asked something about the app that is not listed here, say you're not sure instead of inventing it.`;
 const HELP_SYS = `You are the Lynko Help Center assistant inside the LYNKO CHAT app. Answer ONLY questions about using Lynko, briefly (max ~6 short lines or steps). Reply in the language the user writes in (Sinhala, Singlish, or English).
-Facts: sign up/log in with phone number + password (8+ chars to register). Chats are end-to-end encrypted and vanish after 24 hours. Forgotten password = chats cannot be recovered. Add contact: Settings → Add contact (phone number or 8-digit ID; you can save a name). Rename a contact: open the chat → tap the name/photo → Rename, or ⋮ menu → Rename contact; the nickname is only on your phone. Profile photo/about: Settings → Profile. Hide last seen: Settings. Chat lock: Settings → Chat lock (locked chats open by typing the secret code in the search bar). Notifications: Settings → Notifications (iPhone: add the app to Home Screen first). Voice calls: phone icon in a chat; turn on 'Protect IP address in calls' in Settings for reliability. Status: Status tab. Wallpaper: Settings → Wallpaper. Emoji: 😊 button next to the message box. Install: Android → Install app button downloads the APK (allow install from this source); iPhone → Share → Add to Home Screen. Updates arrive automatically when you open the app. Lynko AI is optional (Settings) and not end-to-end encrypted. Terms and Privacy are in Settings.
+Facts: sign up/log in with phone number + password (8+ chars to register). Chats are end-to-end encrypted and vanish after 24 hours. Forgotten password = chats cannot be recovered. Add contact: Settings → Add contact (phone number or 8-digit ID; you can save a name). Rename a contact: open the chat → tap the name/photo → Rename, or ⋮ menu → Rename contact; the nickname is only on your phone. Profile photo/about: Settings → Profile. Hide last seen: Settings. Chat lock: Settings → Chat lock (locked chats open by typing the secret code in the search bar). Notifications: Settings → Notifications (iPhone: add the app to Home Screen first). Voice calls: phone icon in a chat; turn on 'Protect IP address in calls' in Settings for reliability. Status: Status tab. Wallpaper: Settings → Wallpaper. Emoji: 😊 button next to the message box. Install: Android → Install app button downloads the APK (allow install from this source); iPhone → Share → Add to Home Screen. Updates arrive automatically when you open the app. Lynko AI is optional (Settings) and not end-to-end encrypted. Terms and Privacy are in Settings. Change your own name: Settings → Profile → Name. The ✨ round button (bottom right of the chat list) opens Lynko AI; Movie Bot (in the chat list) shows info, posters, cast, trailers and where to watch — it does not download movies.
 If you don't know or it is an account/legal issue, say so and tell them the team can be reached through the Official channel. Never invent features.`;
 const AI_SYS = (name) => `You are Lynko AI, the friendly assistant inside the Lynko chat app. You are chatting with ${name || 'a user'}. Now: ${new Date().toLocaleString('en-GB', { timeZone: 'Asia/Colombo', dateStyle: 'full', timeStyle: 'short' })} (Sri Lanka time).
 
@@ -494,6 +497,45 @@ STYLE:
 - Be honest. If you don't know, or it needs live info you can't see, say so briefly. Don't invent facts, links, numbers or app features. For medical, legal or money questions give general information and suggest asking a professional for decisions.
 - Be kind and respectful. Don't help with anything harmful or illegal. Never claim to be Meta AI, ChatGPT or another brand — you are Lynko AI.
 ${APP_GUIDE}`;
+
+// ── Movie Bot: movie / series info from TMDB (posters, cast, trailer, where to watch). Info only — no downloads. Needs TMDB_KEY. ──
+const TMDB = process.env.TMDB_KEY || '';
+const tmdb = async (pth, qs = {}) => {
+  const u = new URL('https://api.themoviedb.org/3' + pth); for (const [k, v] of Object.entries(qs)) u.searchParams.set(k, v);
+  const h = {}; if (TMDB.length > 40) h.Authorization = 'Bearer ' + TMDB; else u.searchParams.set('api_key', TMDB);
+  const ac = new AbortController(), t = setTimeout(() => ac.abort(), 9000);
+  try { const r = await fetch(u, { headers: h, signal: ac.signal }); if (!r.ok) throw new Error('tmdb ' + r.status); return await r.json(); } finally { clearTimeout(t); }
+};
+const mvHits = new Map();
+const mvLimited = id => { const n = Date.now(), a = (mvHits.get(id) || []).filter(t => n - t < 60e3); a.push(n); mvHits.set(id, a); return a.length > 30; };
+const mvGate = (req, res) => { if (!TMDB) { res.status(503).json({ error: 'Movie Bot is not set up yet (TMDB_KEY missing on the server)' }); return true; } if (mvLimited(req.u.id)) { res.status(429).json({ error: 'Slow down a little — try again in a minute' }); return true; } return false; };
+app.get('/api/movies/search', auth, async (req, res) => {
+  if (mvGate(req, res)) return;
+  const q = String(req.query.q || '').trim().slice(0, 80); if (!q) return res.json([]);
+  try {
+    const d = await tmdb('/search/multi', { query: q, include_adult: 'false', language: 'en-US' });
+    res.json((d.results || []).filter(x => x.media_type === 'movie' || x.media_type === 'tv').slice(0, 8).map(x => ({ id: x.id, type: x.media_type, title: x.title || x.name, year: String(x.release_date || x.first_air_date || '').slice(0, 4), rating: x.vote_average ? Math.round(x.vote_average * 10) / 10 : null, poster: x.poster_path || null })));
+  } catch { res.status(502).json({ error: 'Movie search is unavailable right now' }); }
+});
+app.get('/api/movies/:type/:id', auth, async (req, res) => {
+  const { type, id } = req.params; if (!['movie', 'tv'].includes(type) || !/^\d{1,9}$/.test(id)) return res.status(400).json({ error: 'Bad request' });
+  if (mvGate(req, res)) return;
+  try {
+    const d = await tmdb(`/${type}/${id}`, { language: 'en-US', append_to_response: 'credits,videos,watch/providers' });
+    const vids = (d.videos && d.videos.results) || [], tr = vids.find(v => v.site === 'YouTube' && v.type === 'Trailer') || vids.find(v => v.site === 'YouTube');
+    const wp = (d['watch/providers'] && d['watch/providers'].results) || {}, reg = wp.LK ? 'LK' : wp.US ? 'US' : Object.keys(wp)[0], w = reg ? wp[reg] : null;
+    const nm = a => (a || []).map(x => x.provider_name).slice(0, 6);
+    res.json({ id: d.id, type, title: d.title || d.name, tagline: d.tagline || '', year: String(d.release_date || d.first_air_date || '').slice(0, 4), runtime: d.runtime || (d.episode_run_time && d.episode_run_time[0]) || null, seasons: d.number_of_seasons || null,
+      genres: (d.genres || []).map(g => g.name), rating: d.vote_average ? Math.round(d.vote_average * 10) / 10 : null, votes: d.vote_count || 0, overview: d.overview || '', poster: d.poster_path || null,
+      cast: ((d.credits && d.credits.cast) || []).slice(0, 8).map(c => c.name), director: (((d.credits && d.credits.crew) || []).find(c => c.job === 'Director') || {}).name || null,
+      trailer: tr ? 'https://www.youtube.com/watch?v=' + tr.key : null, where: w ? { region: reg, stream: nm(w.flatrate), rent: nm(w.rent), buy: nm(w.buy) } : null });
+  } catch { res.status(502).json({ error: 'Could not load details right now' }); }
+});
+app.get('/api/movies/img/:size/:file', auth, async (req, res) => {   // posters are proxied so the strict CSP (img-src 'self') stays as it is
+  const { size, file } = req.params; if (!['w92', 'w185', 'w342'].includes(size) || !/^[\w-]{5,60}\.(jpg|png)$/.test(file)) return res.status(400).end();
+  try { const r = await fetch(`https://image.tmdb.org/t/p/${size}/${file}`); if (!r.ok) return res.status(404).end(); res.set({ 'Content-Type': r.headers.get('content-type') || 'image/jpeg', 'Cache-Control': 'private, max-age=604800' }); res.send(Buffer.from(await r.arrayBuffer())); } catch { res.status(502).end(); }
+});
+
 app.post('/api/ai', auth, async (req, res) => {
   if (!GROQ_KEY) return res.status(503).json({ error: 'AI is not set up on the server (GROQ_API_KEY)' });
   if (aiLimited(req.u.id)) return res.status(429).json({ error: 'Slow down a little — try again in a minute' });
