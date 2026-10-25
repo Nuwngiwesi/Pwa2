@@ -132,6 +132,11 @@ mon.mount(app);                                           // /admin + /admin/api
 app.post('/api/log-error', mon.clientError);              // browser error reports (rate limited)
 app.get('/', page('index.html'));
 app.get('/chat', page('chat.html'));
+// Terms / Privacy: full page for links, fragment for the in-app viewer
+const LEGAL = n => fs.readFileSync(path.join(__dirname, 'legal', n + '.html'), 'utf8');
+const legalPage = n => (q, r) => r.set('Cache-Control', 'no-cache').type('html').send('<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>LYNKO CHAT</title><style>body{margin:0;background:#1a0713;color:#fff0f5;font:16px/1.6 system-ui,sans-serif}main{max-width:680px;margin:auto;padding:24px 20px 60px}h1{font-size:28px}h2{font-size:18px;color:#ffb38a;margin-top:26px}.d{color:#d6a6ba;font-size:13px}a{color:#ff8fb1}</style></head><body><main><a href="/">← LYNKO CHAT</a>' + LEGAL(n) + '</main></body></html>');
+app.get('/terms', legalPage('terms')); app.get('/privacy', legalPage('privacy'));
+app.get('/api/legal/:n', (q, r) => { if (!['terms', 'privacy'].includes(q.params.n)) return r.status(404).end(); r.set('Cache-Control', 'no-cache').type('html').send(LEGAL(q.params.n)); });
 // PWA files (installable app)
 app.get('/sw.js', (q, r) => { r.set('Cache-Control', 'no-cache'); r.type('js').sendFile(path.join(__dirname, 'public/sw.js')); });
 app.get('/features.js', (q, r) => { r.set('Cache-Control', 'no-cache'); r.type('js').sendFile(path.join(__dirname, 'public/features.js')); });
@@ -473,6 +478,9 @@ ABOUT THE LYNKO CHAT APP (you live inside it — explain any part of it when ask
 - Lynko Official: a verified channel with news from the Lynko team; you can read it but can't reply.
 - Log out: menu ⋮ → Log out. If someone forgets the password, the account can't be recovered because of the encryption — say so honestly.
 If asked something about the app that is not listed here, say you're not sure instead of inventing it.`;
+const HELP_SYS = `You are the Lynko Help Center assistant inside the LYNKO CHAT app. Answer ONLY questions about using Lynko, briefly (max ~6 short lines or steps). Reply in the language the user writes in (Sinhala, Singlish, or English).
+Facts: sign up/log in with phone number + password (8+ chars to register). Chats are end-to-end encrypted and vanish after 24 hours. Forgotten password = chats cannot be recovered. Add contact: Settings → Add contact (phone number or 8-digit ID; you can save a name). Rename a contact: open the chat → tap the name/photo → Rename, or ⋮ menu → Rename contact; the nickname is only on your phone. Profile photo/about: Settings → Profile. Hide last seen: Settings. Chat lock: Settings → Chat lock (locked chats open by typing the secret code in the search bar). Notifications: Settings → Notifications (iPhone: add the app to Home Screen first). Voice calls: phone icon in a chat; turn on 'Protect IP address in calls' in Settings for reliability. Status: Status tab. Wallpaper: Settings → Wallpaper. Emoji: 😊 button next to the message box. Install: Android → Install app button downloads the APK (allow install from this source); iPhone → Share → Add to Home Screen. Updates arrive automatically when you open the app. Lynko AI is optional (Settings) and not end-to-end encrypted. Terms and Privacy are in Settings.
+If you don't know or it is an account/legal issue, say so and tell them the team can be reached through the Official channel. Never invent features.`;
 const AI_SYS = (name) => `You are Lynko AI, the friendly assistant inside the Lynko chat app. You are chatting with ${name || 'a user'}. Now: ${new Date().toLocaleString('en-GB', { timeZone: 'Asia/Colombo', dateStyle: 'full', timeStyle: 'short' })} (Sri Lanka time).
 
 LANGUAGE (most important):
@@ -489,6 +497,7 @@ ${APP_GUIDE}`;
 app.post('/api/ai', auth, async (req, res) => {
   if (!GROQ_KEY) return res.status(503).json({ error: 'AI is not set up on the server (GROQ_API_KEY)' });
   if (aiLimited(req.u.id)) return res.status(429).json({ error: 'Slow down a little — try again in a minute' });
+  const help = !!(req.body && req.body.help);
   const list = (Array.isArray(req.body && req.body.messages) ? req.body.messages : []).slice(-20)
     .filter(m => m && ['user', 'assistant'].includes(m.role) && typeof m.content === 'string' && m.content.trim())
     .map(m => ({ role: m.role, content: m.content.slice(0, 4000) }));
@@ -500,7 +509,7 @@ app.post('/api/ai', auth, async (req, res) => {
     return fetch('https://api.groq.com/openai/v1/chat/completions', { method: 'POST', signal: ac.signal,
       headers: { Authorization: 'Bearer ' + GROQ_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify({ model, stream: true, temperature: 0.6, max_tokens: oss ? 2048 : 1024, ...(oss ? { reasoning_effort: 'low', include_reasoning: false } : {}),
-        messages: [{ role: 'system', content: AI_SYS(req.u.u) }, ...list] }) });
+        messages: [{ role: 'system', content: help ? HELP_SYS : AI_SYS(req.u.u) }, ...list] }) });
   };
   try {
     const order = [...new Set([goodModel, GROQ_MODEL, 'openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'llama-3.3-70b-versatile', 'llama-3.1-8b-instant'].filter(Boolean))];
