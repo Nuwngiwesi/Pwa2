@@ -184,6 +184,31 @@ input:focus{border-color:var(--rose)}
 .srch input{background-color:#2b1124}
 input:-webkit-autofill,textarea:-webkit-autofill{-webkit-box-shadow:0 0 0 100px #2b1124 inset;-webkit-text-fill-color:#fff3f8;caret-color:#fff}
 .tg select{-webkit-appearance:menulist;appearance:menulist;background:rgba(255,255,255,.1);color:var(--txt);border:1px solid var(--line);border-radius:10px;padding:7px 8px;font:inherit;font-size:14px;flex:none}
+
+.setov{position:fixed;top:0;right:0;bottom:0;left:0;z-index:45;background:#120510;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-bottom:calc(30px + env(safe-area-inset-bottom));animation:setin .22s ease-out}
+@keyframes setin{from{transform:translateX(24px);opacity:0}to{transform:none;opacity:1}}
+.setov .stb{position:sticky;top:0;z-index:2;display:flex;align-items:center;justify-content:space-between;padding:calc(8px + env(safe-area-inset-top)) 12px 6px;background:rgba(18,5,16,.86);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px)}
+.setov .stb button{color:var(--rose);font-size:17px;padding:8px 6px}
+.setov h1{font-size:34px;font-weight:700;padding:2px 20px 14px;letter-spacing:-.4px}
+.setov .sg{background:var(--panel);border-radius:14px;margin:0 16px 8px;overflow:hidden;max-width:560px}
+.setov .sf{color:var(--mut);font-size:13px;line-height:1.45;padding:2px 32px 20px;max-width:560px}
+.setov .sr{display:flex;align-items:center;gap:12px;width:100%;min-height:52px;padding:9px 14px;text-align:left;border-bottom:1px solid var(--line);position:relative;cursor:pointer}
+.setov .sg>.sr:last-child{border-bottom:0}
+.setov .sr:active{background:rgba(255,255,255,.07)}
+.setov .si{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;font-size:17px;flex:none}
+.setov .st{flex:1;min-width:0;font-size:16.5px}.setov .st small{display:block;color:var(--mut);font-size:12.5px;margin-top:1px;line-height:1.35}
+.setov .sv2{color:var(--mut);font-size:15.5px;flex:none}
+.setov .ch::after{content:'\203A';color:var(--mut);font-size:24px;line-height:1;margin-left:2px;flex:none}
+.setov .red .st{color:#ff6b81}
+.setov .prof{display:flex;align-items:center;gap:14px;padding:14px;min-height:92px}
+.setov .prof .av{width:64px;height:64px;font-size:26px}
+.setov .prof b{display:block;font-size:20px}.setov .prof small{display:block;color:var(--mut);font-size:14px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.setov input.ios{-webkit-appearance:none;appearance:none;width:51px;height:31px;border-radius:99px;background:rgba(255,255,255,.18);position:relative;flex:none;border:0;padding:0;transition:background .2s;cursor:pointer}
+.setov input.ios::after{content:'';position:absolute;top:2px;left:2px;width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 2px 5px #0006;transition:transform .2s}
+.setov input.ios:checked{background:#34c759}.setov input.ios:checked::after{transform:translateX(20px)}
+.setov input.ios:disabled{opacity:.4}
+.setov select{background:transparent;color:var(--mut);border:0;font:inherit;font-size:15.5px;max-width:46%;padding:6px 0;border-radius:0}
+@media(min-width:900px){.setov .sg,.setov .sf,.setov h1{margin-left:max(16px,calc(50% - 280px))}.setov h1{padding-left:0}}
 </style>
 <link rel="manifest" href="/manifest.json">
 <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
@@ -199,7 +224,7 @@ input:-webkit-autofill,textarea:-webkit-autofill{-webkit-box-shadow:0 0 0 100px 
 <div class="app" id="app">
   <aside class="side">
     <div class="bar"><button class="meb" id="meb"></button><b class="lg">Lynko<i>♥</i></b><button class="add" id="addb" title="Add contact" aria-label="Add contact">+</button><button class="ic" id="menub">⋮</button></div>
-    <div class="srch" id="srch"><input id="q" placeholder="Search chats" autocomplete="off"></div>
+    <div class="srch" id="srch"><input id="q" placeholder="Search chats" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="search"></div>
     <div class="chips" id="chips"><button class="on" data-f="all">All</button><button data-f="unread">Unread</button><button data-f="locked">Locked 🔒</button></div>
     <div class="nbar" id="nbar" hidden><span>🔔 Get alerts for new messages &amp; calls</span><button id="nbon">Turn on</button><button id="nbx" aria-label="Dismiss">✕</button></div>
     <div class="list" id="list"></div>
@@ -302,7 +327,7 @@ function wallpaper(){
 // ── profile (DP + about) ──
 function profile(){
   let dp=null;
-  const o=sheet(`<div class="pf"><label class="av big" id="pdp" style="margin:auto"></label><input type="file" id="pfile" accept="image/*" hidden><small style="color:var(--mut)">Tap the photo to change it</small>${me.phone?`<small style="color:var(--mut)">+${me.phone}</small>`:''}<label>About</label><input id="pab" maxlength="120" placeholder="Hey there! I’m using Lynko"><div class="idbox">Your ID — tap to copy<b>${me.id}</b></div><label class="tg"><span>Hide my last seen &amp; online<small>If hidden, you can’t see others’ either</small></span><input type="checkbox" id="phs"></label>${F.cfgAi()?'<label class="tg"><span>Lynko AI ✨<small>AI assistant chat · not end-to-end encrypted</small></span><input type="checkbox" id="pai"></label>':''}<label class="tg"><span>Ask password<small>after leaving the app</small></span><select id="pla"><option value="now">Right away</option><option value="1m">After 1 minute</option><option value="10m">After 10 minutes</option></select></label><button class="btn" style="width:100%" id="ppin">🔒 Reset chat-lock PIN</button><button class="btn" style="width:100%" id="pnt">🔔 Message &amp; call notifications</button><button class="btn p" style="width:100%" id="psv">Save</button></div>`);
+  const o=sheet(`<div class="pf"><label class="av big" id="pdp" style="margin:auto"></label><input type="file" id="pfile" accept="image/*" hidden><small style="color:var(--mut)">Tap the photo to change it</small>${me.phone?`<small style="color:var(--mut)">+${me.phone}</small>`:''}<label>About</label><input id="pab" maxlength="120" placeholder="Hey there! I’m using Lynko"><div class="idbox">Your ID — tap to copy<b>${me.id}</b></div><label class="tg"><span>Hide my last seen &amp; online<small>If hidden, you can’t see others’ either</small></span><input type="checkbox" id="phs"></label>${F.cfgAi()?'<label class="tg"><span>Lynko AI ✨<small>AI assistant chat · not end-to-end encrypted</small></span><input type="checkbox" id="pai"></label>':''}<label class="tg"><span>Ask password<small>after leaving the app</small></span><select id="pla"><option value="now">Right away</option><option value="1m">After 1 minute</option><option value="10m">After 10 minutes</option></select></label><button class="btn" style="width:100%" id="ppin">🔒 Reset chat-lock secret code</button><button class="btn" style="width:100%" id="pnt">🔔 Message &amp; call notifications</button><button class="btn p" style="width:100%" id="psv">Save</button></div>`);
   const paint=()=>{const e=o.querySelector('#pdp');e.innerHTML=dp?`<img src="data:image/jpeg;base64,${dp}">`:me.dpv?`<img src="/api/dp/${me.id}?v=${me.dpv}">`:me.username[0].toUpperCase()};paint();
   o.querySelector('#pab').value=me.about||'';o.querySelector('#phs').checked=!!me.hideSeen;const pai=o.querySelector('#pai');if(pai)pai.checked=F.aiOn();o.querySelector('#pnt').onclick=F.notifOn;o.querySelector('#pla').value=LOCK.after();o.querySelector('#pla').onchange=e=>LOCK.setAfter(e.target.value);o.querySelector('#ppin').onclick=()=>{o.remove();LOCK.chat.resetPin()};
   o.querySelector('#pdp').onclick=()=>o.querySelector('#pfile').click();
@@ -371,13 +396,26 @@ async function setLast(peer,m,unread,live){
 async function loadChats(){const d=await api('/api/chats');await Promise.all(d.map(x=>setLast(x.peer,x.last,x.unread)));renderList()}
 async function loadContacts(){const d=await api('/api/me');Object.assign(me,{about:d.about,dpv:d.dpv});contacts=new Map(d.contacts.map(c=>[c.id,c]));paintMe();renderList()}
 let flt='all',qs='';
+// ── Locked chats: hidden until the SECRET CODE is typed in the search bar ──
+function syncChips(){
+  const c=document.querySelector('#chips [data-f=locked]');if(!c)return;
+  c.hidden=LOCK.chat.hidden()&&!LOCK.chat.isOpen();
+  if(c.hidden&&flt=='locked'){flt='all';document.querySelectorAll('#chips button').forEach(x=>x.classList.toggle('on',x.dataset.f=='all'))}}
+function lockNowRow(){const b=document.createElement('button');b.className='item';
+  b.innerHTML='<div class="av" style="background:linear-gradient(135deg,#7f5cff,#ff5c8a);font-size:22px">🔒</div><div class="n"><div class="r1"><b>Lock now</b></div><div class="r2"><span class="pv">Hide your locked chats again</span></div></div>';
+  b.onclick=()=>LOCK.chat.relock();return b}
+function openLocked(){if(tab!='chats')setTab('chats');flt='locked';$('q').value='';qs='';syncChips();
+  document.querySelectorAll('#chips button').forEach(x=>x.classList.toggle('on',x.dataset.f=='locked'));renderList();toast('Locked chats opened 🔒')}
+let qT=null;
+async function codeCheck(t){if(!t||tab!='chats')return;try{if(await LOCK.chat.tryCode(t))openLocked()}catch{}}
+
 function renderList(){
-  const l=$('list');l.innerHTML='';let tot=off.unread||0;chats.forEach(c=>tot+=c.unread||0);
+  const l=$('list');l.innerHTML='';syncChips();let tot=off.unread||0;chats.forEach((c,id)=>{if(!LOCK.chat.has(id))tot+=c.unread||0});
   document.title=(tot?`(${tot}) `:'')+'Lynko';
   if(tab=='status')return renderStatus();
   if(tab=='calls')return F.renderCalls();
   if(flt=='locked'&&!LOCK.chat.isOpen()){l.innerHTML='<div class="empty">🔒 Locked chats<br><button class="btn p" id="lkopen" style="margin-top:14px;max-width:220px">Unlock</button></div>';$('lkopen').onclick=async()=>{if(await LOCK.chat.gate())renderList()};return}
-  if(flt=='locked'&&!LOCK.chat.count()){l.innerHTML='<div class="empty">No locked chats yet.<br>Open a chat → ⋮ → Lock this chat</div>';return}
+  if(flt=='locked'&&!LOCK.chat.count()){l.innerHTML='<div class="empty">No locked chats yet.<br>Open a chat → ⋮ → Lock this chat</div>';l.appendChild(lockNowRow());return}
   if(flt!='locked'&&LOCK.chat.isOpen()&&!(cur&&LOCK.chat.has(cur)))LOCK.chat.relock();
   const showOff=offShown();if(showOff)l.appendChild(offItem());
   const showAi=F.aiShown(qs,flt);if(showAi)l.appendChild(F.aiItem());
@@ -388,8 +426,9 @@ function renderList(){
     $('hid').onclick=()=>{navigator.clipboard?.writeText(me.id);toast('ID copied')};$('hgo').onclick=addContact;return}
   const arr=[...contacts.values()].sort((a,b)=>(chats.get(b.id)?.m.ts||'').localeCompare(chats.get(a.id)?.m.ts||''))
     .filter(c=>{const L=LOCK.chat.has(c.id),m=c.username.toLowerCase().includes(qs);return flt=='locked'?L&&m:!L&&m&&(flt=='all'||(flt=='unread'&&chats.get(c.id)?.unread))});
-  const lockRow=flt=='all'&&!qs&&LOCK.chat.count()>0;if(lockRow)l.insertBefore(LOCK.chat.row(),l.firstChild);
+  const lockRow=flt=='all'&&!qs&&LOCK.chat.count()>0&&!LOCK.chat.hidden();if(lockRow)l.insertBefore(LOCK.chat.row(),l.firstChild);
   if(!arr.length){if(!showOff&&!showAi&&!lockRow)l.innerHTML='<div class="empty">No chats found</div>';return}
+  if(flt=='locked')l.appendChild(lockNowRow());
   for(const c of arr){
     const ch=chats.get(c.id),locked=false,b=document.createElement('button');
     b.className='item'+(c.id==cur?' on':'');
@@ -672,12 +711,75 @@ function openViewer(uid,start){
   show(Math.min(Math.max(i,0),list.length-1));
 }
 
+// ── Settings (iOS-style grouped list) ──
+const sGrp=(h,f='')=>`<div class="sg">${h}</div>${f?`<div class="sf">${f}</div>`:''}`;
+const sRow=(ic,bg,t,{sub='',val='',a='',red=0,chev=1}={})=>`<button class="sr${chev?' ch':''}${red?' red':''}" data-a="${a}"><span class="si" style="background:${bg}">${ic}</span><span class="st">${t}${sub?`<small>${sub}</small>`:''}</span>${val?`<span class="sv2">${val}</span>`:''}</button>`;
+const sSw=(ic,bg,t,k,{sub='',on=false,dis=false}={})=>`<label class="sr"><span class="si" style="background:${bg}">${ic}</span><span class="st">${t}${sub?`<small>${sub}</small>`:''}</span><input type="checkbox" class="ios" data-k="${k}"${on?' checked':''}${dis?' disabled':''}></label>`;
+let setPg='main';
+function setHtml(){
+  const top=(back)=>`<div class="stb">${back?'<button data-a="back">‹ Settings</button>':'<span></span>'}<button data-a="done">Done</button></div>`;
+  if(setPg=='lock'){
+    const has=LOCK.chat.hasCode(),n=LOCK.chat.count();
+    return top(1)+'<h1>Chat lock</h1>'
+      +sGrp(sRow('🔑','#7f5cff',has?'Change secret code':'Set up secret code',{a:'code',val:has?'On':'Off'}),'Lock any chat from its ⋮ menu. A locked chat disappears from your chat list and from search.')
+      +(has?sGrp(sSw('🙈','#5856d6','Hide Locked chats','hide',{on:LOCK.chat.hidden(),sub:'The folder shows up only after you type your secret code in the search bar'})
+        +sRow('🔒','#ff5c8a','Open Locked chats',{a:'openlk',val:n+(n==1?' chat':' chats')}),'To open them: go to Chats and type your secret code in the search bar.')
+        +sGrp(sRow('🗑','#ff3b30','Remove chat lock',{a:'rmlock',red:1,chev:0}),'This unlocks every locked chat. Needs your account password.'):'');
+  }
+  const ns=F.notifState(),nv=ns=='granted'?'On':ns=='denied'?'Blocked':ns=='unsupported'?'Not supported':'Off';
+  const rs=F.relayState();   // null = still checking, false = server has no relay, true = available
+  return top(0)+'<h1>Settings</h1>'
+    +`<div class="sg"><button class="sr prof" data-a="profile"><span id="spav"></span><span class="st"><b id="spn"></b><small id="spa"></small></span></button></div><div class="sf"></div>`
+    +sGrp(sRow('🔒','#ff5c8a','Chat lock',{a:'lock',val:LOCK.chat.hasCode()?'On':'Off'})
+      +sSw('👁','#34c759','Hide last seen &amp; online','seen',{on:!!me.hideSeen,sub:'If hidden, you can’t see others’ either'})
+      +`<label class="sr"><span class="si" style="background:#ff9f0a">⏱</span><span class="st">Lock app</span><select data-k="after"><option value="now">Right away</option><option value="1m">After 1 minute</option><option value="10m">After 10 minutes</option></select></label>`
+      +sSw('🫥','#5856d6','Hide app preview','shield',{on:LOCK.shield.get(),sub:'Blank screen in the app switcher'}),
+      'Your password is asked again whenever you come back to the app.')
+    +sGrp(sSw('🛡','#0a84ff','Protect IP address in calls','relay',{on:F.relayGet()&&rs!==false,dis:rs!==true,sub:rs===true?'Relays calls through Lynko so your IP stays hidden':rs===false?'Not available — the server has no relay (TURN) set up':'Checking…'}),
+      '🔐 Voice calls are end-to-end encrypted. The call setup is sealed with your chat keys, so not even the Lynko server can read it or swap it, and the audio is encrypted phone-to-phone.')
+    +sGrp(sRow('🔔','#ff3b30','Notifications',{a:'notif',val:nv})
+      +sRow('🖼','#32ade6','Wallpaper',{a:'wall'})
+      +(F.cfgAi()?sSw('✨','#af52de','Lynko AI','ai',{on:F.aiOn(),sub:'Not end-to-end encrypted'}):'')
+      +sRow('➕','#34c759','Add contact',{a:'add'}))
+    +sGrp(sRow('🆔','#8e8e93','My ID',{a:'id',val:me.id,chev:0})+sRow('⎋','#ff3b30','Log out',{a:'logout',red:1,chev:0}),'Lynko ♥ · everything vanishes after 24 hours · messages are end-to-end encrypted')
+}
+function settings(pg){
+  setPg=pg||'main';let o=$('setov');
+  if(!o){o=document.createElement('div');o.id='setov';o.className='setov';document.body.appendChild(o);o.addEventListener('click',onSetClick);o.addEventListener('change',onSetChange)}
+  const y=o.scrollTop;o.innerHTML=setHtml();o.scrollTop=pg?0:y;
+  const sel=o.querySelector('select[data-k=after]');if(sel)sel.value=LOCK.after();
+  if(o.querySelector('.prof')){$('spav').innerHTML=av(me);$('spn').textContent=me.username;$('spa').textContent=me.about||(me.phone?'+'+me.phone:'Hey there! I’m using Lynko')}
+  if(setPg=='main'&&F.relayState()===null)F.relayAvail().then(()=>{if($('setov')&&setPg=='main')settings()})}
+async function onSetClick(e){
+  const b=e.target.closest('[data-a]');if(!b)return;const a=b.dataset.a,o=$('setov');
+  if(a=='done')o.remove();
+  else if(a=='back')settings('main');
+  else if(a=='lock')settings('lock');
+  else if(a=='profile')profile();
+  else if(a=='code'){await(LOCK.chat.hasCode()?LOCK.chat.resetPin():LOCK.chat.setup());if($('setov'))settings('lock')}
+  else if(a=='openlk'){if(await LOCK.chat.gate()){o.remove();openLocked()}}
+  else if(a=='rmlock'){if(confirm('Remove chat lock? All locked chats become normal chats again.')){await LOCK.chat.removeCode();if($('setov'))settings('lock')}}
+  else if(a=='notif'){await F.notifOn();if($('setov'))settings(setPg)}
+  else if(a=='wall')wallpaper();
+  else if(a=='add'){o.remove();addContact()}
+  else if(a=='id'){navigator.clipboard?.writeText(me.id);toast('ID copied')}
+  else if(a=='logout'){if(confirm('Log out of this phone?')){await fetch('/api/logout',{method:'POST'});leave()}}}
+async function onSetChange(e){
+  const t=e.target,k=t.dataset.k;if(!k)return;
+  if(k=='seen'){try{await api('/api/profile','POST',{hideSeen:t.checked});me.hideSeen=t.checked;toast(t.checked?'Last seen hidden':'Last seen visible')}catch(x){t.checked=!t.checked;toast(x.message)}}
+  else if(k=='shield')LOCK.shield.set(t.checked);
+  else if(k=='relay')F.relaySet(t.checked);
+  else if(k=='ai')F.aiToggle(t.checked);
+  else if(k=='after')LOCK.setAfter(t.value);
+  else if(k=='hide'){LOCK.chat.setHidden(t.checked);syncChips();renderList();toast(t.checked?'Locked chats are hidden':'Locked chats folder is visible')}}
+
 // ── menus ──
-$('meb').onclick=profile;$('addb').onclick=addContact;
-$('q').oninput=e=>{qs=e.target.value.trim().toLowerCase();renderList()};
+$('meb').onclick=()=>settings();$('addb').onclick=addContact;
+$('q').oninput=e=>{const raw=e.target.value.trim();qs=raw.toLowerCase();renderList();clearTimeout(qT);qT=setTimeout(()=>codeCheck(raw),500)};
+$('q').addEventListener('keydown',e=>{if(e.key=='Enter'){clearTimeout(qT);codeCheck(e.target.value.trim())}});
 document.querySelectorAll('#chips button').forEach(b=>b.onclick=()=>{flt=b.dataset.f;document.querySelectorAll('#chips button').forEach(x=>x.classList.toggle('on',x==b));renderList()});
-$('n1').onclick=()=>{if(tab!='chats')setTab('chats');else $('list').scrollTo({top:0,behavior:'smooth'})};$('n4').onclick=()=>setTab('status');$('n5').onclick=()=>setTab('calls');$('n2').onclick=wallpaper;$('n3').onclick=profile;
-$('menub').onclick=()=>items([['👤 Profile & About',profile],['🔔 Notifications',F.notifOn],['🖼 Wallpaper',wallpaper],['➕ Add contact',addContact],['⎋ Log out',async()=>{await fetch('/api/logout',{method:'POST'});leave()}]]);
+$('n1').onclick=()=>{if(tab!='chats')setTab('chats');else $('list').scrollTo({top:0,behavior:'smooth'})};$('n4').onclick=()=>setTab('status');$('n5').onclick=()=>setTab('calls');$('n2').onclick=wallpaper;$('n3').onclick=()=>settings();
+$('menub').onclick=()=>items([['⚙️ Settings',()=>settings()],['👤 Profile & About',profile],['🔔 Notifications',F.notifOn],['🖼 Wallpaper',wallpaper],['➕ Add contact',addContact],['⎋ Log out',async()=>{await fetch('/api/logout',{method:'POST'});leave()}]]);
 $('hav').onclick=()=>{if(cur=='official'){const o=sheet(`<div class="pf">${offAv('big')}<h3 style="margin:0">Lynko Official${VF}</h3><p style="color:var(--mut);text-align:center">Official news and updates from the Lynko team.<br>You can’t reply in this channel.</p></div>`);return}const c=contacts.get(cur);if(!c)return;const o=sheet(`<div class="pf">${av(c,'big')}<h3 style="margin:0"></h3><p style="color:var(--mut);text-align:center"></p><div class="idbox">ID<b>${c.id}</b></div></div>`);
   o.querySelector('h3').textContent=c.username;o.querySelector('p').textContent=c.about||'Hey there! I’m using Lynko'};
 $('hmenu').onclick=()=>cur=='ai'?items([['🖼 Wallpaper',wallpaper],['🧹 Clear AI chat',F.aiClear]]):cur=='official'?items([['🖼 Wallpaper',wallpaper]]):items([['🖼 Wallpaper',wallpaper],[LOCK.chat.has(cur)?'🔓 Unlock this chat':'🔒 Lock this chat',()=>LOCK.chat.toggle(cur)]]);
