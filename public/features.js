@@ -100,10 +100,11 @@ function banner(title, text, go) {
 // called by the main script for every incoming message
 async function notify(peer, d) {
   if (d.from == me.id) return;
+  const lk = LOCK.chat.has(peer);   // locked chats never show a name or text
   let text = 'New message';
-  try { const p = await payload(d); text = pvText(p) } catch {}
-  if (document.hidden) { showOS(nm(peer), 'New message', 'm' + peer, '/chat?c=' + peer); return }
-  if (peer != cur) { beep(880, .12); banner(nm(peer), text, () => openChat(peer)) }
+  if (!lk) try { const p = await payload(d); text = pvText(p) } catch {}
+  if (document.hidden) { showOS(lk ? 'LYNKO CHAT' : nm(peer), lk ? 'You have a new message' : 'New message', lk ? 'lk' : 'm' + peer, '/chat?c=' + peer); return }
+  if (peer != cur) { beep(880, .12); banner(lk ? 'LYNKO CHAT' : nm(peer), lk ? 'You have a new message' : text, () => openChat(peer)) }
 }
 
 // ───────────────────────── voice calls ─────────────────────────
@@ -328,6 +329,6 @@ function init(o) {
   aiLoad();
 }
 
-window.F = { init, pres, seenLoad, typingInput, typingStop, typingEvent, notify, hdr, notifOn, nbar,
+window.F = { inCall: () => Call.st != 'idle', init, pres, seenLoad, typingInput, typingStop, typingEvent, notify, hdr, notifOn, nbar,
   callStart, loadCalls, renderCalls, aiOn, aiShown, aiItem, openAI, aiSend, aiClear, aiToggle, cfgAi: () => !!cfg.ai, notifState: () => (notifOK() ? Notification.permission : 'unsupported'), ping };
 })();
