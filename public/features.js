@@ -117,12 +117,30 @@ const gathered = pc => new Promise(r => {
   const t = setTimeout(r, 3000);
   pc.addEventListener('icegatheringstatechange', () => { if (pc.iceGatheringState == 'complete') { clearTimeout(t); r() } });
 });
+// Call setup (SDP: DTLS fingerprint + network addresses) is sealed with the same end-to-end key as chat messages (ECDH -> AES-GCM),
+// bound to the call id / direction / sender. The server only relays ciphertext, so it can't read your IP or swap in its own fingerprint.
+const sealSdp = async (peer, cid, t, sdp) => {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: new TextEncoder().encode(`lynko-call|${cid}|${t}|${me.id}`) }, await shared(peer), new TextEncoder().encode(sdp));
+  return JSON.stringify({ v: 1, iv: b64(iv), ct: b64(ct) });
+};
+const openSdp = async (peer, cid, t, box) => {
+  const o = JSON.parse(box); if (o.v !== 1) throw new Error('bad version');
+  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(o.iv), additionalData: new TextEncoder().encode(`lynko-call|${cid}|${t}|${peer}`) }, await shared(peer), unb64(o.ct));
+  return new TextDecoder().decode(pt);
+};
+// "Protect IP address in calls" (Settings): force relay-only ICE when the server offers a TURN relay
+const RELAYK = () => 'lynko_relay:' + me.id;
+let relayOK = null;
+const relayAvail = async () => { if (relayOK !== null) return relayOK; try { relayOK = (await ice()).some(x => [].concat(x.urls).some(u => /^turns?:/i.test(u))) } catch { relayOK = false } return relayOK };
+const relayGet = () => localStorage.getItem(RELAYK()) == '1';
+const relaySet = v => localStorage.setItem(RELAYK(), v ? '1' : '0');
 const mmss = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
 function callUI(state) {
   let o = $('callov');
   if (!o) {
     o = document.createElement('div'); o.id = 'callov'; o.className = 'callov';
-    o.innerHTML = '<div class="cav"></div><h2 id="cnm"></h2><p id="cst"></p><div class="cbt" id="cbt"></div><audio id="rau" autoplay playsinline></audio>';
+    o.innerHTML = '<div class="cav"></div><h2 id="cnm"></h2><p id="cst"></p><small id="cenc" style="color:#9be7b0">🔒 End-to-end encrypted</small><div class="cbt" id="cbt"></div><audio id="rau" autoplay playsinline></audio>';
     document.body.appendChild(o);
   }
   const c = contacts.get(Call.peer) || { id: Call.peer, username: '?' };
@@ -138,7 +156,8 @@ function callUI(state) {
 const callStatus = t => { const e = $('cst'); if (e) e.textContent = t };
 function pcMake(stream) {
   return ice().then(servers => {
-    const pc = new RTCPeerConnection({ iceServers: servers });
+    return relayAvail().then(rel => {
+    const pc = new RTCPeerConnection({ iceServers: servers, iceTransportPolicy: relayGet() && rel ? 'relay' : 'all' });
     stream.getTracks().forEach(t => pc.addTrack(t, stream));
     pc.ontrack = e => { const a = $('rau'); if (a) { a.srcObject = e.streams[0]; a.play().catch(() => {}) } };
     pc.onconnectionstatechange = () => {
@@ -147,6 +166,7 @@ function pcMake(stream) {
       if (pc.connectionState == 'disconnected') setTimeout(() => { if (Call.pc == pc && pc.connectionState == 'disconnected') callDone('Connection lost', true) }, 7000);
     };
     return pc;
+    });
   });
 }
 const mic = () => navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false });
@@ -174,7 +194,7 @@ async function callStart(peer) {
   try {
     const pc = Call.pc = await pcMake(Call.stream);
     await pc.setLocalDescription(await pc.createOffer()); await gathered(pc);
-    const r = await api('/api/call', 'POST', { type: 'offer', to: peer, cid: Call.cid, sdp: JSON.stringify(pc.localDescription) });
+    const r = await api('/api/call', 'POST', { type: 'offer', to: peer, cid: Call.cid, sdp: await sealSdp(peer, Call.cid, 'offer', JSON.stringify(pc.localDescription)) });
     if (r.busy) return callDone(nm(peer) + ' is on another call');
     callStatus('Ringing…'); ringStart('out');
     Call.to = setTimeout(() => callDone('No answer', true), 45000);
@@ -184,7 +204,7 @@ function callIncoming(d) {
   if (Call.st != 'idle') { post('/api/call', { type: 'reject', cid: d.cid }).catch(() => {}); return }   // busy
   Object.assign(Call, { st: 'incoming', cid: d.cid, peer: d.from, offer: d.sdp, out: false });
   callUI('incoming'); callStatus('Incoming voice call…'); ringStart('in');
-  if (document.hidden) showOS(nm(d.from), 'Incoming voice call', 'call', '/chat?call=1');
+  if (document.hidden) showOS(LOCK.chat.has(d.from) ? 'LYNKO CHAT' : nm(d.from), 'Incoming voice call', 'call', '/chat?call=1');
   clearTimeout(Call.to); Call.to = setTimeout(() => { if (Call.st == 'incoming') callDone('') }, 45000);
 }
 async function callAccept() {
@@ -193,9 +213,10 @@ async function callAccept() {
   try { Call.stream = await mic() } catch { callReject(); return toast('Allow the microphone to answer calls') }
   try {
     const pc = Call.pc = await pcMake(Call.stream);
-    await pc.setRemoteDescription(JSON.parse(Call.offer));
+    let off; try { off = await openSdp(Call.peer, Call.cid, 'offer', Call.offer) } catch { return callDone('Couldn’t verify this call’s security — call refused', true) }
+    await pc.setRemoteDescription(JSON.parse(off));
     await pc.setLocalDescription(await pc.createAnswer()); await gathered(pc);
-    await api('/api/call', 'POST', { type: 'answer', cid: Call.cid, sdp: JSON.stringify(pc.localDescription) });
+    await api('/api/call', 'POST', { type: 'answer', cid: Call.cid, sdp: await sealSdp(Call.peer, Call.cid, 'answer', JSON.stringify(pc.localDescription)) });
     Call.to = setTimeout(() => { if (Call.st == 'connecting') callDone('Couldn’t connect', true) }, 20000);
   } catch (e) { callDone('Couldn’t answer: ' + e.message, true) }
 }
@@ -205,7 +226,7 @@ async function callEvent(d) {
   if (d.t == 'offer') return callIncoming(d);
   if (d.cid != Call.cid) return;
   if (d.t == 'answer' && Call.pc && Call.out) {
-    try { await Call.pc.setRemoteDescription(JSON.parse(d.sdp)); Call.st = 'connecting'; callStatus('Connecting…'); ringStop(); clearTimeout(Call.to); Call.to = setTimeout(() => { if (Call.st == 'connecting') callDone('Couldn’t connect', true) }, 20000) }
+    try { await Call.pc.setRemoteDescription(JSON.parse(await openSdp(Call.peer, Call.cid, 'answer', d.sdp))); Call.st = 'connecting'; callStatus('Connecting…'); ringStop(); clearTimeout(Call.to); Call.to = setTimeout(() => { if (Call.st == 'connecting') callDone('Couldn’t connect', true) }, 20000) }
     catch { callDone('Couldn’t connect', true) }
   } else if (d.t == 'reject') callDone(nm(Call.peer) + ' declined');
   else if (d.t == 'end') callDone(Call.st == 'active' ? 'Call ended' : Call.st == 'incoming' ? 'Missed call' : 'Call ended');
@@ -222,13 +243,13 @@ let calls = [];
 async function loadCalls() {
   try { calls = await api('/api/calls') } catch {}
   const last = +localStorage.getItem('calls_seen:' + me.id) || 0;
-  const miss = calls.some(c => !c.out && c.st == 'missed' && new Date(c.ts) > last);
+  const miss = calls.some(c => !c.out && c.st == 'missed' && new Date(c.ts) > last && !LOCK.chat.has(c.peer));
   if (tab == 'calls') { localStorage.setItem('calls_seen:' + me.id, Date.now()); $('cdot').hidden = true; renderCalls() } else $('cdot').hidden = !miss;
 }
 function renderCalls() {
   const l = $('list'); l.innerHTML = '';
   const h = document.createElement('div'); h.className = 'sec'; h.textContent = 'Voice calls · peer-to-peer'; l.appendChild(h);
-  const rows = calls.filter(c => contacts.has(c.peer));
+  const rows = calls.filter(c => contacts.has(c.peer) && (!LOCK.chat.has(c.peer) || LOCK.chat.isOpen()));
   if (!rows.length) { const e = document.createElement('div'); e.className = 'empty'; e.innerHTML = 'No calls yet.<br>Open a chat and tap 📞 to start a voice call.'; l.appendChild(e); return }
   for (const c of rows) {
     const ct = contacts.get(c.peer), b = document.createElement('button'); b.className = 'item';
@@ -330,5 +351,5 @@ function init(o) {
 }
 
 window.F = { inCall: () => Call.st != 'idle', init, pres, seenLoad, typingInput, typingStop, typingEvent, notify, hdr, notifOn, nbar,
-  callStart, loadCalls, renderCalls, aiOn, aiShown, aiItem, openAI, aiSend, aiClear, aiToggle, cfgAi: () => !!cfg.ai, notifState: () => (notifOK() ? Notification.permission : 'unsupported'), ping };
+  callStart, loadCalls, renderCalls, aiOn, aiShown, aiItem, openAI, aiSend, aiClear, aiToggle, relayAvail, relayGet, relaySet, relayState: () => relayOK, cfgAi: () => !!cfg.ai, notifState: () => (notifOK() ? Notification.permission : 'unsupported'), ping };
 })();
