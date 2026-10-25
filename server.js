@@ -217,7 +217,7 @@ app.post('/api/media', auth, express.raw({ type: 'application/octet-stream', lim
 const linked = new Set();
 app.post('/api/messages', auth, async (req, res) => {
   const { kind, iv, ct, bIv, bkey, tmp } = req.body || {}, to = String((req.body || {}).to || ''), me = req.u.id;
-  if (!['text', 'img', 'vid'].includes(kind) || !iv || !ct || String(ct).length > 40000) return res.status(400).json({ error: 'Bad message' });
+  if (!['text', 'img', 'vid', 'aud'].includes(kind) || !iv || !ct || String(ct).length > 40000) return res.status(400).json({ error: 'Bad message' });
   const pair = me + '>' + to, known = linked.has(pair);
   if (!known && !(await U.findOne({ id: to }, { projection: { _id: 1 } }))) return res.status(404).json({ error: 'User not found' });
   const cbuf = Buffer.from(ct, 'base64'), _id = new ObjectId(), now = new Date();
@@ -240,7 +240,7 @@ app.post('/api/messages', auth, async (req, res) => {
   if (!known) { if (linked.size > 1e5) linked.clear(); linked.add(pair); }
   mon.count('msg');
   if (!small) fire([me, to], 'msg', evt);   // big (media) events carry no ciphertext: receivers fetch it, so only announce after it is saved
-  push(to, { type: 'msg', title: req.u.u, body: kind === 'text' ? 'New message' : kind === 'img' ? '📷 Photo' : '🎥 Video', tag: 'm' + me, from: me });
+  push(to, { type: 'msg', title: req.u.u, body: kind === 'text' ? 'New message' : kind === 'img' ? '📷 Photo' : kind === 'aud' ? '🎤 Voice message' : '🎥 Video', tag: 'm' + me, from: me });
   res.json(m);
 });
 app.get('/api/blob/:id', auth, async (req, res) => {
