@@ -324,9 +324,7 @@ function burst(x=innerWidth/2,y=innerHeight*.72){
     document.body.appendChild(h);setTimeout(()=>h.remove(),1500)}}
 const love=p=>p.k=='text'&&/❤|♥|💕|💖|💗|😍|🥰|😘|love you|i love u|luv u|\bluv\b/i.test(p.v);
 const jumbo=v=>/^[\p{Extended_Pictographic}\uFE0F\u200D\s]+$/u.test(v)&&[...v.matchAll(/\p{Extended_Pictographic}/gu)].length<=3;
-setInterval(()=>{if(document.hidden)return;const h=document.createElement('div');h.className='bh';h.textContent='♥';
-  h.style.cssText=`left:${Math.random()*100}vw;top:105vh;font-size:${10+Math.random()*16}px;color:${['#ff5c8a','#ffb38a','#b28cff'][Math.random()*3|0]};opacity:.35;--dx:${(Math.random()-.5)*60}px;--dy:-115vh;--s:1.2;animation-duration:${9+Math.random()*6}s;z-index:0`;
-  document.body.appendChild(h);setTimeout(()=>h.remove(),15000)},1800);
+
 
 // ── wallpaper ──
 const HEART="url(\"data:image/svg+xml,"+encodeURIComponent("<svg xmlns='http://www.w3.org/2000/svg' width='90' height='90'><text x='8' y='32' font-size='22' fill='#ff5c8a' fill-opacity='.16'>♥</text><text x='52' y='76' font-size='15' fill='#b28cff' fill-opacity='.16'>♥</text></svg>")+"\") ,#1d0817";
@@ -347,14 +345,14 @@ function wallpaper(){
 // ── profile (DP + about) ──
 function profile(){
   let dp=null;
-  const o=sheet(`<div class="pf"><label class="av big" id="pdp" style="margin:auto"></label><input type="file" id="pfile" accept="image/*" hidden><small style="color:var(--mut)">Tap the photo to change it</small>${me.phone?`<small style="color:var(--mut)">+${me.phone}</small>`:''}<label>About</label><input id="pab" maxlength="120" placeholder="Hey there! I’m using Lynko"><div class="idbox">Your ID — tap to copy<b>${me.id}</b></div><label class="tg"><span>Hide my last seen &amp; online<small>If hidden, you can’t see others’ either</small></span><input type="checkbox" id="phs"></label>${F.cfgAi()?'<label class="tg"><span>Lynko AI ✨<small>AI assistant chat · not end-to-end encrypted</small></span><input type="checkbox" id="pai"></label>':''}<label class="tg"><span>Ask password<small>after leaving the app</small></span><select id="pla"><option value="now">Right away</option><option value="1m">After 1 minute</option><option value="10m">After 10 minutes</option></select></label><button class="btn" style="width:100%" id="ppin">🔒 Reset chat-lock secret code</button><button class="btn" style="width:100%" id="pnt">🔔 Message &amp; call notifications</button><button class="btn p" style="width:100%" id="psv">Save</button></div>`);
+  const o=sheet(`<div class="pf"><label class="av big" id="pdp" style="margin:auto"></label><input type="file" id="pfile" accept="image/*" hidden><small style="color:var(--mut)">Tap the photo to change it</small>${me.phone?`<small style="color:var(--mut)">+${me.phone}</small>`:''}<label>Name</label><input id="pnm" maxlength="30" placeholder="Your name"><label>About</label><input id="pab" maxlength="120" placeholder="Hey there! I’m using Lynko"><div class="idbox">Your ID — tap to copy<b>${me.id}</b></div><label class="tg"><span>Hide my last seen &amp; online<small>If hidden, you can’t see others’ either</small></span><input type="checkbox" id="phs"></label>${F.cfgAi()?'<label class="tg"><span>Lynko AI ✨<small>AI assistant chat · not end-to-end encrypted</small></span><input type="checkbox" id="pai"></label>':''}<label class="tg"><span>Ask password<small>after leaving the app</small></span><select id="pla"><option value="now">Right away</option><option value="1m">After 1 minute</option><option value="10m">After 10 minutes</option></select></label><button class="btn" style="width:100%" id="ppin">🔒 Reset chat-lock secret code</button><button class="btn" style="width:100%" id="pnt">🔔 Message &amp; call notifications</button><button class="btn p" style="width:100%" id="psv">Save</button></div>`);
   const paint=()=>{const e=o.querySelector('#pdp');e.innerHTML=dp?`<img src="data:image/jpeg;base64,${dp}">`:me.dpv?`<img src="/api/dp/${me.id}?v=${me.dpv}">`:me.username[0].toUpperCase()};paint();
-  o.querySelector('#pab').value=me.about||'';o.querySelector('#phs').checked=!!me.hideSeen;const pai=o.querySelector('#pai');if(pai)pai.checked=F.aiOn();o.querySelector('#pnt').onclick=F.notifOn;o.querySelector('#pla').value=LOCK.after();o.querySelector('#pla').onchange=e=>LOCK.setAfter(e.target.value);o.querySelector('#ppin').onclick=()=>{o.remove();LOCK.chat.resetPin()};
+  o.querySelector('#pab').value=me.about||'';o.querySelector('#pnm').value=me.username||'';o.querySelector('#phs').checked=!!me.hideSeen;const pai=o.querySelector('#pai');if(pai)pai.checked=F.aiOn();o.querySelector('#pnt').onclick=F.notifOn;o.querySelector('#pla').value=LOCK.after();o.querySelector('#pla').onchange=e=>LOCK.setAfter(e.target.value);o.querySelector('#ppin').onclick=()=>{o.remove();LOCK.chat.resetPin()};
   o.querySelector('#pdp').onclick=()=>o.querySelector('#pfile').click();
   o.querySelector('.idbox').onclick=()=>{navigator.clipboard?.writeText(me.id);toast('ID copied')};
   o.querySelector('#pfile').onchange=async e=>{const f=e.target.files[0];if(!f)return;const bm=await createImageBitmap(f),s=Math.min(bm.width,bm.height),c=document.createElement('canvas');
     c.width=c.height=256;c.getContext('2d').drawImage(bm,(bm.width-s)/2,(bm.height-s)/2,s,s,0,0,256,256);dp=c.toDataURL('image/jpeg',.8).split(',')[1];paint()};
-  o.querySelector('#psv').onclick=async()=>{try{const hs=o.querySelector('#phs').checked,r=await api('/api/profile','POST',{about:o.querySelector('#pab').value,dp,hideSeen:hs});me.about=r.about;me.dpv=r.dpv;me.hideSeen=hs;if(pai)F.aiToggle(pai.checked);paintMe();o.remove();toast('Saved ♥')}catch(e){toast(e.message)}}}
+  o.querySelector('#psv').onclick=async()=>{try{const hs=o.querySelector('#phs').checked,r=await api('/api/profile','POST',{about:o.querySelector('#pab').value,name:o.querySelector('#pnm').value.trim(),dp,hideSeen:hs});if(r.username){me.username=r.username;try{localStorage.setItem('lynko_name',r.username)}catch{}}me.about=r.about;me.dpv=r.dpv;me.hideSeen=hs;if(pai)F.aiToggle(pai.checked);paintMe();o.remove();toast('Saved ♥')}catch(e){toast(e.message)}}}
 const NK={all(){try{return JSON.parse(localStorage.getItem('lk_nick')||'{}')}catch{return{}}},set(id,n){const a=this.all();n?a[id]=n:delete a[id];try{localStorage.setItem('lk_nick',JSON.stringify(a))}catch{}}};
 function nick(c){if(c){if(c.orig==null)c.orig=c.username;c.username=NK.all()[c.id]||c.orig}return c}
 function renameContact(id){const c=contacts.get(id);if(!c)return;
@@ -445,7 +443,7 @@ function renderList(){
   if(flt=='locked'&&!LOCK.chat.count()){l.innerHTML='<div class="empty">No locked chats yet.<br>Open a chat → ⋮ → Lock this chat</div>';l.appendChild(lockNowRow());return}
   if(flt!='locked'&&LOCK.chat.isOpen()&&!(cur&&LOCK.chat.has(cur)))LOCK.chat.relock();
   const showOff=offShown();if(showOff)l.appendChild(offItem());
-  const showAi=F.aiShown(qs,flt);if(showAi)l.appendChild(F.aiItem());
+  const showAi=LX.botShown(qs,flt);if(showAi)l.appendChild(LX.botItem());
   if(!contacts.size){
     if(qs||flt!='all'){if(!showOff&&!showAi)l.innerHTML='<div class="empty">No chats found</div>';return}
     const h=document.createElement('div');h.innerHTML=`<div class="hero"><i>♥</i><h2>Welcome to Lynko</h2><p>Share your ID with someone special, or add theirs, to start a private chat. Everything disappears after 24 hours.</p><div class="idbox" id="hid">Your ID — tap to copy<b>${me.id}</b></div><button class="btn p" id="hgo">Add your first contact</button></div>`;
@@ -839,7 +837,7 @@ function setHtml(){
     +`<div class="sg"><button class="sr prof" data-a="profile"><span id="spav"></span><span class="st"><b id="spn"></b><small id="spa"></small></span></button></div><div style="height:12px"></div>`
     +sGrp(sRow('🔒','#ff5c8a','Chat lock',{a:'lock',val:LOCK.chat.hasCode()?'On':'Off'})
       +sSw('👁','#34c759','Hide last seen &amp; online','seen',{on:!!me.hideSeen,sub:'If hidden, you can’t see others’ either'})
-      +`<label class="sr"><span class="si" style="background:#ff9f0a">⏱</span><span class="st">Lock app</span><select data-k="after"><option value="now">Right away</option><option value="1m">After 1 minute</option><option value="10m">After 10 minutes</option></select></label>`
+      +`<label class="sr"><span class="si" style="background:#ff9f0a">⏱</span><span class="st">Lock app</span><select data-k="after"><option value="never">Never</option><option value="now">Right away</option><option value="1m">After 1 minute</option><option value="10m">After 10 minutes</option></select></label>`
       +sSw('🫥','#5856d6','Hide app preview','shield',{on:LOCK.shield.get(),sub:'Blank screen in the app switcher'}),
       'Your password is asked again whenever you come back to the app.')
     +(rs===true?sGrp(sSw('🛡','#0a84ff','Protect IP address in calls','relay',{on:F.relayGet(),sub:'Relays calls through Lynko so your IP stays hidden'}),CALLNOTE):`<div class="sf">${CALLNOTE}</div>`)   // row only appears when the server really has a relay (no more \"not available\" error text)
