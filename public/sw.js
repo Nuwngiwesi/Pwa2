@@ -1,6 +1,6 @@
 // LYNKO CHAT service worker — app shell + last-seen chats work offline.
 // Cached API data is the same ENCRYPTED data the server sends; it is wiped on logout.
-const SHELL = 'lynko-shell-v6', API = 'lynko-api-v2', EXT = 'lynko-ext-v2';
+const SHELL = 'lynko-shell-v7', API = 'lynko-api-v2', EXT = 'lynko-ext-v2';
 const PRE = ['/', '/chat', '/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png'];
 const READ = /^\/api\/(me|config|chats|messages|statuses|official|dp\/|blob\/|status\/)/;
 const IMMUTABLE = /^\/api\/(blob\/|dp\/|status\/[^/]+\/blob)/;   // media never changes -> cache first
@@ -43,7 +43,7 @@ async function apiRead(req, url) {
     return res;
   }
   try {
-    const res = await withTimeout(req, 8000);
+    const res = await withTimeout(req, 5000);
     if (res.status === 200) {
       if (url.pathname === '/api/messages') await mergeMessages(url, res);
       if (!url.searchParams.has('after')) cache.put(req, res.clone());
