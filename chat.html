@@ -162,6 +162,20 @@ input:focus{border-color:var(--rose)}
  .back{display:grid}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+/* voice messages */
+.vn{position:relative;display:flex;align-items:center;gap:10px;min-width:220px;padding:3px 2px 1px}
+.vp{width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.22);font-size:15px;flex:none;display:grid;place-items:center}
+.vp:active{background:rgba(255,255,255,.35)}
+.vbar{flex:1;height:22px;position:relative;cursor:pointer;touch-action:none}
+.vbar::before{content:'';position:absolute;left:0;right:0;top:9px;height:4px;border-radius:99px;background:rgba(255,255,255,.28)}
+.vfill{position:absolute;left:0;top:9px;height:4px;width:0;border-radius:99px;background:#fff}
+.vfill::after{content:'';position:absolute;right:-5px;top:-3px;width:10px;height:10px;border-radius:50%;background:#fff}
+.vt{font-size:12px;opacity:.9;min-width:38px;text-align:right;font-variant-numeric:tabular-nums;cursor:pointer}
+.vn .sp{display:none;width:18px;height:18px;border-width:2px;left:auto;right:46px;top:0;bottom:0}.vn.ld .sp{display:block}.vn.bad .vp{background:rgba(255,80,80,.5)}
+.rec{display:flex;align-items:center;gap:10px;padding:8px 8px calc(8px + env(safe-area-inset-bottom));background:#1d0817}
+.rec .rd{width:11px;height:11px;border-radius:50%;background:#ff3b30;animation:beat 1s infinite;margin-left:8px;flex:none}
+.rec .rt{font-size:18px;font-variant-numeric:tabular-nums}.rec .rh{flex:1;color:var(--mut);font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rec .ic{flex:none}
 
 /* ── calls / notifications / AI ── */
 .callov{position:fixed;top:0;right:0;bottom:0;left:0;z-index:80;background:radial-gradient(900px 700px at 50% 0%,#5a1246,#14040f);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:30px;text-align:center}
@@ -244,9 +258,10 @@ if(vv){vv.addEventListener('resize',f);vv.addEventListener('scroll',f)}document.
     <div class="msgs" id="msgs" hidden></div>
     <div class="attm" id="attm" hidden><button id="gal">🖼<span>Gallery</span></button><button id="cam">📷<span>Camera</span></button></div>
     <div class="comp" id="comp" hidden>
-      <div class="pill"><button class="ib" id="att" type="button">📎</button><textarea id="txt" rows="1" placeholder="Message" enterkeyhint="send"></textarea></div>
+      <div class="pill"><button class="ib" id="att" type="button">📎</button><textarea id="txt" rows="1" placeholder="Message" enterkeyhint="send"></textarea><button class="ib" id="mic" type="button" aria-label="Voice message">🎙</button></div>
       <button class="send" id="send" type="button">❤</button>
     </div>
+    <div class="rec" id="rec" hidden><button class="ic" id="rcx" type="button" aria-label="Cancel">🗑</button><i class="rd"></i><span class="rt" id="rct">0:00</span><span class="rh">Recording… tap ➤ to send</span><button class="send" id="rcs" type="button" aria-label="Send voice message">➤</button></div>
   </section>
 </div>
 <input type="file" id="fs" accept="image/*,video/*" hidden><input type="file" id="fsc" accept="image/*" capture="environment" hidden><input type="file" id="fg" accept="image/*,video/*" hidden><input type="file" id="fc" accept="image/*" capture="environment" hidden>
@@ -391,7 +406,7 @@ function offItem(){
 const offShown=()=>tab=='chats'&&(!qs||'lynko official verified'.includes(qs))&&(flt=='all'||(flt=='unread'&&!!off.unread));
 
 // ── chat list ──
-const pvText=p=>p.k=='text'?p.v:(p.k=='img'?'📷 ':'🎥 ')+(p.cap||(p.k=='img'?'Photo':'Video'));
+const pvText=p=>p.k=='text'?p.v:p.k=='aud'?'🎤 Voice message'+(p.d?' ('+fd(p.d)+')':''):(p.k=='img'?'📷 ':'🎥 ')+(p.cap||(p.k=='img'?'Photo':'Video'));
 async function setLast(peer,m,unread,live){
   const p=await payload(m),old=chats.get(peer)||{};
   const u=unread!==undefined?unread:(live&&m.from!=me.id?(old.unread||0)+1:old.unread||0);
@@ -471,15 +486,15 @@ async function openChat(id){
   $('app').classList.add('chatting');['head','msgs','comp'].forEach(x=>$(x).hidden=false);$('none').hidden=true;
   const c=contacts.get(id);$('hn').textContent=c.username;$('hav').innerHTML=av(c);F.typingStop();setSub();F.hdr();
   $('msgs').innerHTML='';$('msgs').style.scrollBehavior='auto';const ch=chats.get(id);if(ch)ch.unread=0;renderList();
-  shared(id).catch(()=>{});   // derive the encryption key now so your first send has zero wait
+  micVis();shared(id).catch(()=>{});   // derive the encryption key now so your first send has zero wait
   const cached=(mcache.get(id)||[]).filter(m=>live24(m)&&pl.has(m.id));
   if(cached.length){paintBatch(cached,true);scrollEnd()}
   let list;try{list=await api('/api/messages?with='+id)}catch(e){if(tok==openTok&&!cached.length&&e.message!='auth')toast('Couldn’t load messages');return}
   if(tok!=openTok)return;
   await Promise.all(list.map(payload));if(tok!=openTok)return;
-  const empty=!msgs.length;reconcile(list);if(empty)scrollEnd();markRead();
+  const empty=!msgs.length;reconcile(list);if(empty)scrollEnd();markRead();micVis();
 }
-function closeChat(){F.typingStop();$('app').classList.remove('chatting');['head','msgs','comp'].forEach(x=>$(x).hidden=true);$('none').hidden=false;$('attm').hidden=true;cur=null;renderList()}
+function closeChat(){recCancel();F.typingStop();$('app').classList.remove('chatting');['head','msgs','comp'].forEach(x=>$(x).hidden=true);$('none').hidden=false;$('attm').hidden=true;cur=null;renderList()}
 addEventListener('popstate',()=>{if(skipPop){skipPop=0;return}if(sv){sv._close(true);return}const so=$('setov');if(so){so.remove();return}if(cur)closeChat()});
 $('back').onclick=()=>history.back();
 async function pull(){
@@ -503,7 +518,7 @@ async function getMedia(m,p){
   if(urls[m.id])return urls[m.id];
   const peer=m.from==me.id?m.to:m.from,r=await fetch('/api/blob/'+m.id);if(!r.ok)throw 0;
   const buf=await open(peer,r.headers.get('X-IV'),await r.arrayBuffer());
-  return urls[m.id]=URL.createObjectURL(new Blob([buf],{type:p.mime}))}
+  return urls[m.id]=URL.createObjectURL(new Blob([buf],{type:/^(audio|image|video)\/[\w.+-]+$/.test(p.mime||'')?p.mime:''}))}
 function lightbox(u){const o=document.createElement('div');o.className='ov lb';o.innerHTML='<img>';o.firstChild.src=u;o.onclick=()=>o.remove();document.body.appendChild(o)}
 const fd=s=>Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');
 function mediaBox(m,p,b){
@@ -518,6 +533,37 @@ function mediaBox(m,p,b){
     catch{d.classList.remove('ld');d.classList.add('bad')}d._busy=0};
   if(p.k=='img'||urls[m.id])io.observe(d);d.onclick=()=>{if(!d.classList.contains('ok')&&!b._lp)d._load()};
   return d}
+// ── voice messages: encrypted like photos, decrypted ahead of time so Play starts instantly ──
+let vnNow=null;
+function audioBox(m,p){
+  const d=document.createElement('div');d.className='vn';
+  d.innerHTML='<button class="vp" type="button" aria-label="Play">▶</button><div class="vbar"><i class="vfill"></i></div><i class="sp"></i><span class="vt"></span>';
+  const btn=d.querySelector('.vp'),bar=d.querySelector('.vbar'),fill=d.querySelector('.vfill'),vt=d.querySelector('.vt'),tot=Math.max(0,+p.d||0);
+  let a=null,raf=0,rate=1,busy=null;
+  const dur=()=>a&&isFinite(a.duration)&&a.duration>0?a.duration:tot;
+  const idle=()=>{vt.textContent=fd(a&&a.currentTime>0.2&&!a.ended?a.currentTime:dur())};
+  const paintP=()=>{const t=dur();fill.style.width=(t?Math.min(100,a.currentTime/t*100):0)+'%';if(!a.paused)vt.textContent=fd(a.currentTime);raf=a.paused?0:requestAnimationFrame(paintP)};
+  const load=()=>busy||(busy=(async()=>{
+    d.classList.remove('bad');d.classList.add('ld');
+    try{const u=await getMedia(m,p);a=new Audio();a.preload='auto';a.src=u;
+      a.onloadedmetadata=()=>{if(a.duration===Infinity){a.currentTime=1e101;a.ontimeupdate=()=>{a.ontimeupdate=null;a.currentTime=0;idle()}}else idle()};   // recorder files have no length: ask the browser to find it
+      a.onplay=()=>{btn.textContent='❚❚';btn.setAttribute('aria-label','Pause');if(!raf)raf=requestAnimationFrame(paintP)};
+      a.onpause=()=>{btn.textContent='▶';btn.setAttribute('aria-label','Play');if(a.ended){fill.style.width='0';a.currentTime=0}idle()};
+      a.onended=()=>{fill.style.width='0';a.currentTime=0;btn.textContent='▶';vt.textContent=fd(dur())};
+      a.onerror=()=>{d.classList.add('bad');busy=null;a=null};
+      d.classList.remove('ld');return a}
+    catch{d.classList.remove('ld');d.classList.add('bad');busy=null;return null}})());
+  d._load=()=>{load()};                               // called when the bubble scrolls into view
+  vt.textContent=fd(tot);io.observe(d);
+  btn.onclick=async e=>{e.stopPropagation();
+    const au=a||await load();if(!au)return toast('Couldn’t load this voice message — tap to retry');
+    if(!au.paused){au.pause();return}
+    if(vnNow&&vnNow!==au)vnNow.pause();vnNow=au;au.playbackRate=rate;
+    try{await au.play()}catch{toast('Tap play again')}};
+  vt.onclick=e=>{e.stopPropagation();rate=rate==1?1.5:rate==1.5?2:1;if(a)a.playbackRate=rate;toast('Speed '+rate+'×')};
+  const seek=e=>{if(!a||!dur())return;const r=bar.getBoundingClientRect();a.currentTime=Math.max(0,Math.min(1,(e.clientX-r.left)/r.width))*dur();if(a.paused)paintP()};
+  let dragging=false;bar.onpointerdown=e=>{dragging=true;bar.setPointerCapture?.(e.pointerId);seek(e)};bar.onpointermove=e=>{if(dragging)seek(e)};bar.onpointerup=bar.onpointercancel=()=>{dragging=false};
+  return d}
 function paint(m,p,into){
   const box=into||$('msgs'),near=into?false:box.scrollHeight-box.scrollTop-box.clientHeight<220,mine=m.from==me.id;
   const dl=new Date(m.ts).toDateString();if(dl!=lastDay){lastDay=dl;const c=document.createElement('div');c.className='sys';c.textContent=dayLbl(m.ts);box.appendChild(c)}
@@ -528,6 +574,7 @@ function paint(m,p,into){
       if(th)q.querySelector('img').src=th;q.querySelector('b').textContent='Status';
       q.querySelector('span').textContent=p.re.k=='text'?String(p.re.t||''):(p.re.k=='img'?'📷 ':'🎥 ')+String(p.re.t||(p.re.k=='img'?'Photo':'Video'));b.appendChild(q)}
     const t=document.createElement('div');t.className='tx';t.textContent=p.v;if(!p.re&&jumbo(p.v))b.classList.add('jumbo');b.appendChild(t)}
+  else if(p.k=='aud'){b.classList.add('aud');b.appendChild(audioBox(m,p))}
   else{b.classList.add('med');b.appendChild(mediaBox(m,p,b));if(p.cap){const t=document.createElement('div');t.className='tx';t.textContent=p.cap;b.appendChild(t)}}
   const mt=document.createElement('span');mt.className='meta';mt.innerHTML='<time></time>'+(mine?'<i class="tk"></i>':'');mt.firstChild.textContent=hm(m.ts);b.appendChild(mt);
   b.insertAdjacentHTML('beforeend','<span class="rxp" hidden></span>');
@@ -574,11 +621,38 @@ async function deliver(kind,p,bytes,local,to){
 function sendText(){
   if(!cur)return;if(cur=='ai')return F.aiSend($('txt').value);F.typingStop();const v=$('txt').value.trim(),t=v||'❤️';$('txt').value='';grow();
   if(!v||love({k:'text',v:t}))burst();deliver('text',{k:'text',v:t});$('txt').focus({preventScroll:true})}
-function grow(){const t=$('txt');t.style.height='auto';t.style.height=Math.min(t.scrollHeight,120)+'px';$('send').textContent=t.value.trim()?'➤':'❤'}
+function grow(){const t=$('txt');t.style.height='auto';t.style.height=Math.min(t.scrollHeight,120)+'px';$('send').textContent=t.value.trim()?'➤':'❤';micVis()}
+function micVis(){const m=$('mic');if(m)m.hidden=cur=='ai'||cur=='official'||!!$('txt').value.trim()}
 $('send').addEventListener('pointerdown',e=>e.preventDefault());   // keeps the keyboard open
 $('send').onclick=sendText;
 $('txt').addEventListener('input',()=>{grow();F.typingInput()});
 $('txt').addEventListener('keydown',e=>{if(e.key=='Enter'&&!e.shiftKey&&!matchMedia('(pointer:coarse)').matches){e.preventDefault();sendText()}});
+
+// ── recording a voice message (tap 🎙, talk, tap ➤) ──
+let rc=null;const MAXVN=180;   // seconds
+function recUi(on){$('comp').hidden=on||!cur;$('rec').hidden=!on}
+async function recStart(){
+  if(rc||!cur||cur=='ai'||cur=='official')return;
+  if(!navigator.mediaDevices?.getUserMedia||!window.MediaRecorder)return toast('Voice messages aren’t supported in this browser');
+  sessionStorage.setItem('lk_skip',Date.now()+90e3);   // the mic permission popup must not re-lock the app
+  let st;try{st=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true}})}catch{return toast('Allow the microphone to send voice messages')}
+  if(!cur||cur=='ai'||cur=='official'){st.getTracks().forEach(t=>t.stop());return}
+  const mt=['audio/webm;codecs=opus','audio/mp4','audio/webm','audio/ogg;codecs=opus'].find(t=>MediaRecorder.isTypeSupported(t))||'';
+  let mr;try{mr=new MediaRecorder(st,mt?{mimeType:mt,audioBitsPerSecond:32000}:{audioBitsPerSecond:32000})}catch{st.getTracks().forEach(t=>t.stop());return toast('Voice messages aren’t supported in this browser')}
+  const r=rc={mr,st,chunks:[],t0:Date.now(),peer:cur,send:false,type:(mr.mimeType||mt||'audio/webm').split(';')[0]};
+  mr.ondataavailable=e=>{if(e.data&&e.data.size)r.chunks.push(e.data)};
+  mr.onstop=async()=>{
+    clearInterval(r.tick);st.getTracks().forEach(t=>t.stop());if(rc===r)rc=null;recUi(false);
+    if(!r.send)return;const d=(Date.now()-r.t0)/1000;
+    if(d<.7)return toast('Too short');
+    const blob=new Blob(r.chunks,{type:r.type});if(!blob.size)return toast('Nothing recorded');if(blob.size>15*1048576)return toast('Voice message too long');
+    deliver('aud',{k:'aud',mime:r.type,d:Math.round(d*10)/10,size:blob.size},await blob.arrayBuffer(),URL.createObjectURL(blob),r.peer)};
+  mr.start(250);recUi(true);navigator.vibrate?.(15);
+  const tick=()=>{const s=Math.floor((Date.now()-r.t0)/1000);$('rct').textContent=fd(s);if(s>=MAXVN)recStop(true)};tick();r.tick=setInterval(tick,250)}
+function recStop(send){if(!rc)return;rc.send=!!send;try{rc.mr.state!='inactive'&&rc.mr.stop()}catch{}}
+const recCancel=()=>recStop(false);
+$('mic').onclick=recStart;$('rcx').onclick=recCancel;$('rcs').onclick=()=>recStop(true);
+$('mic').addEventListener('pointerdown',e=>e.preventDefault());
 
 // ── photos & videos (WhatsApp-style preview, blurred thumb, caption) ──
 const mini=(src,w,h)=>{const k=24/Math.max(w,h),c=document.createElement('canvas');c.width=Math.max(1,Math.round(w*k));c.height=Math.max(1,Math.round(h*k));c.getContext('2d').drawImage(src,0,0,c.width,c.height);return c.toDataURL('image/jpeg',.5)};
@@ -738,6 +812,7 @@ const sGrp=(h,f='')=>`<div class="sg">${h}</div>${f?`<div class="sf">${f}</div>`
 const sRow=(ic,bg,t,{sub='',val='',a='',red=0,chev=1}={})=>`<button class="sr${chev?' ch':''}${red?' red':''}" data-a="${a}"><span class="si" style="background:${bg}">${ic}</span><span class="st">${t}${sub?`<small>${sub}</small>`:''}</span>${val?`<span class="sv2">${val}</span>`:''}</button>`;
 const sSw=(ic,bg,t,k,{sub='',on=false,dis=false}={})=>`<label class="sr"><span class="si" style="background:${bg}">${ic}</span><span class="st">${t}${sub?`<small>${sub}</small>`:''}</span><input type="checkbox" class="ios" data-k="${k}"${on?' checked':''}${dis?' disabled':''}></label>`;
 let setPg='main';
+const isInstalled=()=>matchMedia('(display-mode: standalone)').matches||navigator.standalone===true;
 const CALLNOTE='🔐 Voice calls are end-to-end encrypted. The call setup is sealed with your chat keys, so not even the Lynko server can read it or swap it, and the audio is encrypted phone-to-phone.';
 function setHtml(){
   const top=(back)=>`<div class="stb">${back?'<button data-a="back">‹ Settings</button>':'<span></span>'}<button data-a="done">Done</button></div>`;
@@ -759,6 +834,7 @@ function setHtml(){
       +sSw('🫥','#5856d6','Hide app preview','shield',{on:LOCK.shield.get(),sub:'Blank screen in the app switcher'}),
       'Your password is asked again whenever you come back to the app.')
     +(rs===true?sGrp(sSw('🛡','#0a84ff','Protect IP address in calls','relay',{on:F.relayGet(),sub:'Relays calls through Lynko so your IP stays hidden'}),CALLNOTE):`<div class="sf">${CALLNOTE}</div>`)   // row only appears when the server really has a relay (no more \"not available\" error text)
+    +(isInstalled()?'':sGrp(sRow('📲','#0a84ff','Install app',{a:'install',sub:'Add LYNKO CHAT to your home screen — opens like a normal app'})))
     +sGrp(sRow('🔔','#ff3b30','Notifications',{a:'notif',val:nv})
       +sRow('🖼','#32ade6','Wallpaper',{a:'wall'})
       +(F.cfgAi()?sSw('✨','#af52de','Lynko AI','ai',{on:F.aiOn(),sub:'Not end-to-end encrypted'}):'')
@@ -782,6 +858,7 @@ async function onSetClick(e){
   else if(a=='openlk'){if(await LOCK.chat.gate()){o.remove();openLocked()}}
   else if(a=='rmlock'){if(confirm('Remove chat lock? All locked chats become normal chats again.')){await LOCK.chat.removeCode();if($('setov'))settings('lock')}}
   else if(a=='notif'){await F.notifOn();if($('setov'))settings(setPg)}
+  else if(a=='install'){if(window.lynkoInstall)lynkoInstall();else toast('Open the browser menu → Install app')}
   else if(a=='wall')wallpaper();
   else if(a=='add'){o.remove();addContact()}
   else if(a=='id'){navigator.clipboard?.writeText(me.id);toast('ID copied')}
@@ -809,6 +886,7 @@ $('hav').onclick=()=>{if(cur=='official'){const o=sheet(`<div class="pf">${offAv
   o.querySelector('h3').textContent=c.username;o.querySelector('p').textContent=c.about||'Hey there! I’m using Lynko'};
 $('hmenu').onclick=()=>cur=='ai'?items([['🖼 Wallpaper',wallpaper],['🧹 Clear AI chat',F.aiClear]]):cur=='official'?items([['🖼 Wallpaper',wallpaper]]):items([['🖼 Wallpaper',wallpaper],[LOCK.chat.has(cur)?'🔓 Unlock this chat':'🔒 Lock this chat',()=>LOCK.chat.toggle(cur)]]);
 document.addEventListener('visibilitychange',()=>{
+  if(document.hidden)recCancel();
   if(document.hidden&&cur&&LOCK.chat.has(cur)){closeChat()}
   else if(!document.hidden&&cur){pull().catch(()=>{})}});
 
