@@ -329,7 +329,7 @@ function aiToggle(on) {
 function hdr() {
   const isC = !!cur && contacts.has(cur);
   $('hcall').hidden = !isC;
-  $('att').hidden = cur == 'ai';
+  $('att').hidden = cur == 'ai'; if (window.micVis) micVis();
   $('txt').placeholder = cur == 'ai' ? 'Ask Lynko AI…' : 'Message';
   if (isC) seenLoad(cur);
 }
