@@ -24,7 +24,7 @@ function ringStop() { clearInterval(ringT); ringT = null; navigator.vibrate?.(0)
 const presence = new Map();   // id -> {online, ts, hidden, at}
 let pingT = null;
 const ping = off => { try { if (off) navigator.sendBeacon('/api/ping?off=1'); else post('/api/ping').catch(() => {}) } catch {} };
-function pingStart() { ping(); clearInterval(pingT); pingT = setInterval(() => { if (!document.hidden) ping() }, 25000) }
+function pingStart() { ping(); clearInterval(pingT); pingT = setInterval(() => { if (!document.hidden) ping() }, 40000) }
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) { clearInterval(pingT); ping(true); typingStop() }
   else if (me) { pingStart(); if (cur && contacts.has(cur)) seenLoad(cur) }
@@ -38,11 +38,11 @@ function pres(id) {
   return p.ts ? `last seen ${dayName(p.ts)} at ${hm(p.ts)}` : '';
 }
 async function seenLoad(id) {
-  if (!id || id == 'official' || id == 'ai') return;
+  if (!id || id == 'official' || id == 'ai' || (contacts.get(id) && contacts.get(id).bot)) return;
   try { const d = await api('/api/seen/' + id); presence.set(id, d); if (cur == id) setSub() } catch {}
 }
 let seenT = null;
-function seenPoll() { clearInterval(seenT); seenT = setInterval(() => { if (!document.hidden && cur && contacts.has(cur)) seenLoad(cur) }, 20000) }
+function seenPoll() { clearInterval(seenT); seenT = setInterval(() => { if (!document.hidden && cur && contacts.has(cur)) seenLoad(cur) }, 60000) }
 
 // ───────────────────────── typing (instant + stop) ─────────────────────────
 let tyLast = 0, tyIdle = null, tyTo = null;
@@ -445,7 +445,7 @@ function aiToggle(on) {
 // ───────────────────────── header / glue ─────────────────────────
 function hdr() {
   const isC = !!cur && contacts.has(cur);
-  $('hcall').hidden = !isC;
+  $('hcall').hidden = !isC || !!contacts.get(cur).bot;
   $('att').hidden = cur == 'ai'; if (window.micVis) micVis();
   $('txt').placeholder = cur == 'ai' ? 'Ask Lynko AI…' : 'Message';
   if (isC) seenLoad(cur);
