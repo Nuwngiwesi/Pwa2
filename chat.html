@@ -363,10 +363,10 @@ function renameContact(id){const c=contacts.get(id);if(!c)return;
   const done=n=>{NK.set(id,n);nick(c);o.remove();if(cur==id)$('hn').textContent=c.username;renderList();toast('Saved ♥')};
   o.querySelector('#rns').onclick=()=>{const n=i.value.trim();done(n&&n!==c.orig?n:'')};o.querySelector('#rnr').onclick=()=>done('');i.addEventListener('keydown',e=>{if(e.key=='Enter')o.querySelector('#rns').click()})}
 function addContact(){
-  const o=sheet(`<div class="pf"><h3 style="margin:0">Add contact</h3><input id="nid" placeholder="Friend’s phone number or 8-digit ID" inputmode="tel" autocomplete="off"><input id="nnm" maxlength="30" placeholder="Save as (optional name)" autocomplete="off"><button class="btn p" style="width:100%" id="ngo">Add contact</button><div class="idbox">Your ID — tap to copy<b>${me.id}</b></div></div>`);
+  const o=sheet(`<div class="pf"><h3 style="margin:0">Add contact</h3><input id="nid" placeholder="Phone number, 8-digit ID or @botusername" inputmode="text" autocomplete="off"><input id="nnm" maxlength="30" placeholder="Save as (optional name)" autocomplete="off"><button class="btn p" style="width:100%" id="ngo">Add contact</button><div class="idbox">Your ID — tap to copy<b>${me.id}</b></div></div>`);
   const inp=o.querySelector('#nid');setTimeout(()=>inp.focus(),50);
   o.querySelector('.idbox').onclick=()=>{navigator.clipboard?.writeText(me.id);toast('ID copied')};
-  const go=async()=>{const id=inp.value.trim();if(!/\d{6,}/.test(id))return toast('Enter a phone number or 8-digit ID');
+  const go=async()=>{const id=inp.value.trim();if(!/\d{6,}/.test(id)&&!/^@?[a-z][a-z0-9_]{4,31}$/i.test(id))return toast('Enter a phone number, 8-digit ID or @botusername');
     try{const had=contacts.has(id),p=await api('/api/contacts','POST',{id});const sn=o.querySelector('#nnm').value.trim();if(sn)NK.set(p.id,sn);contacts.set(p.id,nick(p));o.remove();toast(had?'Already in your contacts':'Contact added ♥');openChat(p.id)}catch(e){toast(e.message)}};
   o.querySelector('#ngo').onclick=go;inp.addEventListener('keydown',e=>{if(e.key=='Enter')go()})}
 function paintMe(){$('meb').innerHTML=av(me)}
@@ -464,7 +464,7 @@ function renderList(){
     const ch=chats.get(c.id),locked=false,b=document.createElement('button');
     b.className='item'+(c.id==cur?' on':'');
     b.innerHTML=`${av(c)}<div class="n"><div class="r1"><b></b><time></time></div><div class="r2"><span class="pv"></span><i class="badge"></i></div></div>`;
-    b.querySelector('b').textContent=c.username;
+    b.querySelector('b').textContent=c.username;if(c.bot)b.querySelector('b').insertAdjacentHTML('beforeend','<i class="tag">BOT</i>');
     const pv=b.querySelector('.pv');
     if(typingT[c.id]){pv.textContent='typing…';pv.classList.add('ty')}
     else pv.textContent=locked?'🔒 Locked chat':ch?((ch.m.from==me.id?(ch.m.r?'✓✓ ':'✓ '):'')+ch.txt):(c.about||'Say hi ♥');
@@ -476,7 +476,7 @@ function renderList(){
 
 // ── open / close chat ──
 function setSub(){const c=contacts.get(cur);if(!c)return;const s=$('hs');
-  if(typingT[cur]){s.textContent='typing…';s.className='ty'}else{const pr=F.pres(cur);s.className=pr=='online'?'on':'';s.textContent=pr||c.about||'End-to-end encrypted · clears in 24h'}}
+  if(typingT[cur]){s.textContent='typing…';s.className='ty'}else{const pr=F.pres(cur);s.className=pr=='online'?'on':'';s.textContent=c.bot?'@'+c.handle+' · bot':pr||c.about||'End-to-end encrypted · clears in 24h'}}
 let openTok=0;
 const mcache=new Map(),live24=m=>Date.now()-new Date(m.ts)<864e5;   // chats seen this session open instantly
 const cacheMsg=(peer,m)=>{if(m.pending)return;let a=mcache.get(peer);if(!a)mcache.set(peer,a=[]);if(!a.some(x=>x.id==m.id))a.push(m)};
@@ -635,7 +635,7 @@ function sendText(){
   if(!cur)return;if(cur=='ai')return F.aiSend($('txt').value);F.typingStop();const v=$('txt').value.trim(),t=v||'❤️';$('txt').value='';grow();
   if(!v||love({k:'text',v:t}))burst();deliver('text',{k:'text',v:t});$('txt').focus({preventScroll:true})}
 function grow(){const t=$('txt');t.style.height='auto';t.style.height=Math.min(t.scrollHeight,120)+'px';$('send').textContent=t.value.trim()?'➤':'❤';micVis()}
-function micVis(){const m=$('mic');if(m)m.hidden=cur=='ai'||cur=='official'||!!$('txt').value.trim()}
+function micVis(){const m=$('mic');if(m)m.hidden=cur=='ai'||cur=='official'||!!(contacts.get(cur)&&contacts.get(cur).bot)||!!$('txt').value.trim()}
 $('send').addEventListener('pointerdown',e=>e.preventDefault());   // keeps the keyboard open
 $('send').onclick=sendText;
 $('txt').addEventListener('input',()=>{grow();F.typingInput()});
