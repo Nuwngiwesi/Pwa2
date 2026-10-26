@@ -268,6 +268,7 @@ if(vv){vv.addEventListener('resize',f);vv.addEventListener('scroll',f)}document.
 <script src="/lock.js?v={{V}}"></script>
 <script src="/features.js?v={{V}}"></script>
 <script src="/emoji.js?v={{V}}" defer></script>
+<script src="/stickers.js?v={{V}}" defer></script>
 <script src="/extras.js?v={{V}}"></script>
 <script>
 const $=id=>document.getElementById(id), enc=new TextEncoder(), dec=new TextDecoder();
@@ -415,7 +416,7 @@ function offItem(){
 const offShown=()=>tab=='chats'&&(!qs||'lynko official verified'.includes(qs))&&(flt=='all'||(flt=='unread'&&!!off.unread));
 
 // ── chat list ──
-const pvText=p=>p.k=='text'?p.v:p.k=='aud'?'🎤 Voice message'+(p.d?' ('+fd(p.d)+')':''):(p.k=='img'?'📷 ':'🎥 ')+(p.cap||(p.k=='img'?'Photo':'Video'));
+const pvText=p=>p.k=='text'?(p.st?'🧸 Sticker':p.v):p.k=='aud'?'🎤 Voice message'+(p.d?' ('+fd(p.d)+')':''):(p.k=='img'?'📷 ':'🎥 ')+(p.cap||(p.k=='img'?'Photo':'Video'));
 async function setLast(peer,m,unread,live){
   const p=await payload(m),old=chats.get(peer)||{};
   const u=unread!==undefined?unread:(live&&m.from!=me.id?(old.unread||0)+1:old.unread||0);
@@ -582,7 +583,8 @@ function paint(m,p,into){
   const dl=new Date(m.ts).toDateString();if(dl!=lastDay){lastDay=dl;const c=document.createElement('div');c.className='sys';c.textContent=dayLbl(m.ts);box.appendChild(c)}
   const r=document.createElement('div');r.className='row '+(mine?'me':'them');r.id='m'+m.id;r._m=m;
   const b=document.createElement('div');b.className='b';r.appendChild(b);
-  if(p.k=='text'){
+  if(p.k=='text'&&p.st&&window.STK&&STK.has(p.st)){b.classList.add('stk');b.appendChild(STK.el(p.st))}
+  else if(p.k=='text'){
     if(p.re){const q=document.createElement('div'),th=safeTh(p.re.th);q.className='qt';q.innerHTML=(th?'<img alt="">':'')+'<div><b></b><span></span></div>';
       if(th)q.querySelector('img').src=th;q.querySelector('b').textContent='Status';
       q.querySelector('span').textContent=p.re.k=='text'?String(p.re.t||''):(p.re.k=='img'?'📷 ':'🎥 ')+String(p.re.t||(p.re.k=='img'?'Photo':'Video'));b.appendChild(q)}
@@ -610,7 +612,7 @@ function menu(id){
   o.onclick=e=>{if(e.target==o)o.remove()};
   o.querySelectorAll('.emo button').forEach(b=>b.onclick=()=>{o.remove();react(id,b.textContent,$('m'+id))});
   const act=o.querySelector('.act'),add=(t,f)=>{const b=document.createElement('button');b.className='mi';b.textContent=t;b.onclick=()=>{o.remove();f()};act.appendChild(b)};
-  if(p.k=='text'||p.cap)add('Copy',()=>copyText(p.k=='text'?p.v:p.cap));
+  if((p.k=='text'&&!p.st)||p.cap)add('Copy',()=>copyText(p.k=='text'?p.v:p.cap));
   if(mine)add('Delete for everyone',async()=>{if(await ask('Delete this message for everyone?',{ok:'Delete'}))api('/api/messages/'+id,'DELETE').catch(e=>toast(e.message))});
   document.body.appendChild(o)}
 function setRx(id,rx){const m=msgs.find(x=>x.id==id);if(m){m.rx=rx;rxEl($('m'+id))}}
