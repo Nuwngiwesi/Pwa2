@@ -240,46 +240,16 @@ input:-webkit-autofill,textarea:-webkit-autofill{-webkit-box-shadow:0 0 0 100px 
 <script>(function(){var vv=window.visualViewport,f=function(){document.documentElement.style.setProperty('--vh',((vv?vv.height:window.innerHeight)*0.01)+'px');if(scrollY||scrollX)scrollTo(0,0)};f();
 addEventListener('resize',f);addEventListener('orientationchange',function(){setTimeout(f,150)});addEventListener('scroll',function(){if(scrollY||scrollX)scrollTo(0,0)},{passive:true});
 if(vv){vv.addEventListener('resize',f);vv.addEventListener('scroll',f)}document.addEventListener('focusout',function(){setTimeout(f,80)})})()</script>
-<style id="wa">
-:root{--panel:#1c0a17;--inb:#2a1324;--outb:#a3235f}
-body,.app{background:#12050f}
-.side,.nav,.comp,.rec,.cb{background:#150612}
-.bar{padding-bottom:4px}.lg{font-size:27px}.meb{order:3}.ic#menub{order:2}
-.add{position:absolute;right:18px;bottom:calc(80px + env(safe-area-inset-bottom));width:58px;height:58px;border-radius:18px;margin:0;font-size:30px;z-index:6;box-shadow:0 8px 24px rgba(255,92,138,.45)}
-.chips button{padding:6px 14px;font-size:14px}
-.item{padding:0 16px;gap:14px}.item .n{padding:12px 0;border-bottom:1px solid rgba(255,255,255,.06)}
-.badge{background:var(--rose);color:#fff}
-.nav{border-top:1px solid rgba(255,255,255,.06)}.nav button{padding:8px 0 10px}.nav i{padding:3px 20px;font-size:20px}
-.main{--wp:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Ctext x='14' y='40' font-size='18' fill='%23ff5c8a' fill-opacity='.07'%3E%E2%99%A5%3C/text%3E%3Ctext x='72' y='98' font-size='13' fill='%23b28cff' fill-opacity='.07'%3E%E2%99%A1%3C/text%3E%3C/svg%3E"),radial-gradient(900px 700px at 10% 0,#3a0b2a,transparent 60%),#12050f}
-.head{background:#1c0a17;border:0;box-shadow:0 1px 0 rgba(255,255,255,.06)}
-.msgs{padding:10px 8px 14px;gap:2px}
-.sys{background:#2a1324;color:#e9bdd0;border-radius:8px;font-size:12px;padding:4px 10px;box-shadow:0 1px 1px #0005}
-.b{border-radius:10px;padding:6px 8px 4px;font-size:15.5px;box-shadow:0 1px 1px rgba(0,0,0,.35)}
-.them .b{background:var(--inb);border-top-left-radius:0}
-.me .b{background:linear-gradient(135deg,var(--outb),#6b2aa0);border-top-right-radius:0}
-.b::before{content:'';position:absolute;top:0;width:8px;height:11px}
-.them .b::before{left:-7px;background:var(--inb);clip-path:polygon(100% 0,0 0,100% 100%)}
-.me .b::before{right:-7px;background:var(--outb);clip-path:polygon(0 0,100% 0,0 100%)}
-.b.jumbo::before,.b.med::before{display:none}
-.comp{align-items:flex-end;gap:6px;padding:6px 8px calc(8px + env(safe-area-inset-bottom))}
-.pill{background:var(--inb);border:0;border-radius:26px}
-.send,.mic2{width:50px;height:50px;border-radius:50%;font-size:21px;flex:none;background:linear-gradient(135deg,var(--rose),#c14bff);box-shadow:0 6px 18px rgba(255,92,138,.4)}
-.attm{left:10px;right:10px;bottom:72px;display:grid;grid-template-columns:repeat(3,1fr);gap:8px;border-radius:24px;background:var(--panel);padding:18px 10px;box-shadow:0 12px 40px #000a}
-.attm button{font-size:13px;color:var(--mut);padding:0}.attm span{font-size:13px}
-.attm i{width:56px;height:56px;border-radius:50%;display:grid;place-items:center;font-style:normal;font-size:24px;background:linear-gradient(135deg,#b24bf3,#7b3fe4)}
-.attm #cam i{background:linear-gradient(135deg,#ff5c8a,#e0245e)}
-.ov{background:rgba(8,1,6,.78)}
-</style>
 </head>
 <body>
 <div class="app" id="app">
   <aside class="side">
     <div class="bar"><button class="meb" id="meb"></button><b class="lg">Lynko<i>♥</i></b><button class="add" id="addb" title="Add contact" aria-label="Add contact">+</button><button class="ic" id="menub">⋮</button></div>
-    <div class="srch" id="srch"><input id="q" type="search" name="lynko-chat-filter" placeholder="Ask Lynko or search" autocomplete="off" data-lpignore="true" data-1p-ignore data-form-type="other" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="search"></div>
+    <div class="srch" id="srch"><input id="q" type="search" name="lynko-chat-filter" placeholder="Search chats" autocomplete="off" data-lpignore="true" data-1p-ignore data-form-type="other" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="search"></div>
     <div class="chips" id="chips"><button class="on" data-f="all">All</button><button data-f="unread">Unread</button><button data-f="locked">Locked 🔒</button></div>
     <div class="nbar" id="nbar" hidden><span>🔔 Get alerts for new messages &amp; calls</span><button id="nbon">Turn on</button><button id="nbx" aria-label="Dismiss">✕</button></div>
     <div class="list" id="list"></div>
-    <nav class="nav"><button class="on" id="n1"><i>💬</i>Chats</button><button id="n4"><i>✨</i>Updates<em class="dot" id="sdot" hidden></em></button><button id="n5"><i>📞</i>Calls<em class="dot" id="cdot" hidden></em></button><button id="n2"><i>🖼</i>Wallpaper</button><button id="n3"><i>👤</i>You</button></nav>
+    <nav class="nav"><button class="on" id="n1"><i>💬</i>Chats</button><button id="n4"><i>✨</i>Status<em class="dot" id="sdot" hidden></em></button><button id="n5"><i>📞</i>Calls<em class="dot" id="cdot" hidden></em></button><button id="n2"><i>🖼</i>Wallpaper</button><button id="n3"><i>👤</i>You</button></nav>
   </aside>
   <section class="main">
     <div class="none" id="none"><div><i>♥</i><p style="margin-top:14px;line-height:1.6">Pick a chat, or start a new one.<br>Everything vanishes after 24 hours.</p></div></div>
@@ -290,9 +260,9 @@ body,.app{background:#12050f}
       <button class="ic" id="hcall" aria-label="Voice call" hidden>📞</button><button class="ic" id="hmenu">⋮</button>
     </div>
     <div class="msgs" id="msgs" hidden></div>
-    <div class="attm" id="attm" hidden><button id="gal"><i>🖼</i><span>Gallery</span></button><button id="cam"><i>📷</i><span>Camera</span></button></div>
+    <div class="attm" id="attm" hidden><button id="gal">🖼<span>Gallery</span></button><button id="cam">📷<span>Camera</span></button></div>
     <div class="comp" id="comp" hidden>
-      <div class="pill"><button class="ib" id="att" type="button">📎</button><textarea id="txt" rows="1" placeholder="Message" enterkeyhint="send"></textarea></div><button class="mic2" id="mic" type="button" aria-label="Voice message">🎙</button>
+      <div class="pill"><button class="ib" id="att" type="button">📎</button><textarea id="txt" rows="1" placeholder="Message" enterkeyhint="send"></textarea><button class="ib" id="mic" type="button" aria-label="Voice message">🎙</button></div>
       <button class="send" id="send" type="button">❤</button>
     </div>
     <div class="rec" id="rec" hidden><button class="ic" id="rcx" type="button" aria-label="Cancel">🗑</button><i class="rd"></i><span class="rt" id="rct">0:00</span><span class="rh">Recording… tap ➤ to send</span><button class="send" id="rcs" type="button" aria-label="Send voice message">➤</button></div>
@@ -692,7 +662,7 @@ async function deliver(kind,p,bytes,local,to){
 function sendText(){
   if(!cur)return;if(cur=='ai')return F.aiSend($('txt').value);F.typingStop();const v=$('txt').value.trim(),t=v||'❤️';$('txt').value='';grow();
   if(!v||love({k:'text',v:t}))burst();deliver('text',{k:'text',v:t});$('txt').focus({preventScroll:true})}
-function grow(){const t=$('txt');t.style.height='auto';t.style.height=Math.min(t.scrollHeight,120)+'px';$('send').textContent='➤';micVis();$('send').hidden=!t.value.trim()&&!$('mic').hidden}
+function grow(){const t=$('txt');t.style.height='auto';t.style.height=Math.min(t.scrollHeight,120)+'px';$('send').textContent=t.value.trim()?'➤':'❤';micVis()}
 function micVis(){const m=$('mic');if(m)m.hidden=cur=='ai'||cur=='official'||!!(contacts.get(cur)&&contacts.get(cur).bot)||!!$('txt').value.trim()}
 $('send').addEventListener('pointerdown',e=>e.preventDefault());   // keeps the keyboard open
 $('send').onclick=sendText;
@@ -956,7 +926,7 @@ $('q').oninput=e=>{const q=e.target;if(q.value&&document.activeElement!==q){q.va
 addEventListener('pageshow',e=>{if(e.persisted&&$('q').value){$('q').value='';qs='';renderList()}});
 $('q').addEventListener('keydown',e=>{if(e.key=='Enter'){clearTimeout(qT);codeCheck(e.target.value.trim())}});
 document.querySelectorAll('#chips button').forEach(b=>b.onclick=()=>{flt=b.dataset.f;document.querySelectorAll('#chips button').forEach(x=>x.classList.toggle('on',x==b));renderList()});
-try{grow()}catch{};$('n1').onclick=()=>{if(tab!='chats')setTab('chats');else $('list').scrollTo({top:0,behavior:'smooth'})};$('n4').onclick=()=>setTab('status');$('n5').onclick=()=>setTab('calls');$('n2').onclick=wallpaper;$('n3').onclick=()=>settings();
+$('n1').onclick=()=>{if(tab!='chats')setTab('chats');else $('list').scrollTo({top:0,behavior:'smooth'})};$('n4').onclick=()=>setTab('status');$('n5').onclick=()=>setTab('calls');$('n2').onclick=wallpaper;$('n3').onclick=()=>settings();
 $('menub').onclick=()=>items([['⚙️ Settings',()=>settings()],['👤 Profile & About',profile],['🔔 Notifications',F.notifOn],['🖼 Wallpaper',wallpaper],['➕ Add contact',addContact],['⎋ Log out',async()=>{await fetch('/api/logout',{method:'POST'});leave()}]]);
 $('hav').onclick=()=>{if(cur=='official'){const o=sheet(`<div class="pf">${offAv('big')}<h3 style="margin:0">Lynko Official${VF}</h3><p style="color:var(--mut);text-align:center">Official news and updates from the Lynko team.<br>You can’t reply in this channel.</p></div>`);return}const c=contacts.get(cur);if(!c)return;
   LX.contact(c,{avatar:av(c,'big'),locked:LOCK.chat.has(c.id),rename:()=>renameContact(c.id),lock:()=>LOCK.chat.toggle(c.id),call:()=>F.callStart(c.id)})};
