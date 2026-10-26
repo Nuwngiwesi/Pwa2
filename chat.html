@@ -598,13 +598,19 @@ async function addMsg(m,live){
   const p=await payload(m);if(m.from==me.id?m.to!=cur:m.from!=cur){seen.delete(m.id);return}   // chat changed while decrypting
   msgs.push(m);cacheMsg(cur,m);paint(m,p);if(live&&m.from!=me.id&&love(p))burst()}
 
+async function copyText(t){   // works even when the Clipboard API is blocked (older phones / some PWAs)
+  t=String(t||'');
+  try{if(navigator.clipboard&&window.isSecureContext){await navigator.clipboard.writeText(t);return toast('Copied')}}catch{}
+  const a=document.createElement('textarea');a.value=t;a.setAttribute('readonly','');a.style.cssText='position:fixed;top:0;left:0;opacity:0;font-size:16px';
+  document.body.appendChild(a);a.select();a.setSelectionRange(0,t.length);let ok=false;try{ok=document.execCommand('copy')}catch{}a.remove();
+  toast(ok?'Copied':'Couldn’t copy')}
 function menu(id){
   const m=msgs.find(x=>x.id==id);if(!m||m.pending)return;const p=pl.get(id),mine=m.from==me.id;
   const o=document.createElement('div');o.className='ov';o.innerHTML=`<div class="mn"><div class="emo">${['❤️','😍','🥰','😘','😂','😢','🔥','👍'].map(e=>`<button>${e}</button>`).join('')}</div><div class="act"></div></div>`;
   o.onclick=e=>{if(e.target==o)o.remove()};
   o.querySelectorAll('.emo button').forEach(b=>b.onclick=()=>{o.remove();react(id,b.textContent,$('m'+id))});
   const act=o.querySelector('.act'),add=(t,f)=>{const b=document.createElement('button');b.className='mi';b.textContent=t;b.onclick=()=>{o.remove();f()};act.appendChild(b)};
-  if(p.k=='text')add('Copy',()=>navigator.clipboard?.writeText(p.v).then(()=>toast('Copied')));
+  if(p.k=='text'||p.cap)add('Copy',()=>copyText(p.k=='text'?p.v:p.cap));
   if(mine)add('Delete for everyone',async()=>{if(await ask('Delete this message for everyone?',{ok:'Delete'}))api('/api/messages/'+id,'DELETE').catch(e=>toast(e.message))});
   document.body.appendChild(o)}
 function setRx(id,rx){const m=msgs.find(x=>x.id==id);if(m){m.rx=rx;rxEl($('m'+id))}}
