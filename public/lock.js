@@ -60,19 +60,21 @@ async function unlock() {
   const priv = await checkPw(pw);
   $('lkgo').disabled = false;
   if (!priv) { fail('app'); $('lkp').value = ''; const w2 = wait('app'); $('lkerr').textContent = w2 ? `Wrong password. Wait ${w2}s` : 'Wrong password'; return }
-  clear('app'); sessionStorage.setItem('lynko_priv', priv);
+  clear('app'); sessionStorage.setItem('lynko_priv', priv); if (stay()) localStorage.setItem('lynko_priv', priv);
   locked = false; ov.hidden = true; $('lkp').value = ''; try { const q = document.getElementById('q'); if (q && q.value) { q.value = ''; q.dispatchEvent(new Event('input')) } } catch {} resolveReady();
 }
 $('lkgo').onclick = unlock; $('lkp').addEventListener('keydown', e => { if (e.key == 'Enter') { e.preventDefault(); unlock() } });
 $('lkout').onclick = async () => {
   if (!confirm('Log out of this phone? You will need your password to log in again.')) return;
   try { await fetch('/api/logout', { method: 'POST' }) } catch {}
-  localStorage.removeItem('lynko_enc'); sessionStorage.clear(); try { await caches.delete('lynko-api-v2') } catch {} location.href = '/';
+  localStorage.removeItem('lynko_enc'); localStorage.removeItem('lynko_priv'); sessionStorage.clear(); try { await caches.delete('lynko-api-v2') } catch {} location.href = '/';
 };
 
 // first load: no unlocked key in this session = the app was closed -> ask for the password
+const stay = () => (localStorage.getItem('lk_after') || 'never') === 'never';   // 'Lock app: Never' (default) = open straight away, no password
 if (!localStorage.getItem('lynko_enc')) resolveReady();                 // not logged in: main script sends you to the login page
-else if (sessionStorage.getItem('lynko_priv')) resolveReady();          // same session (e.g. opened from a notification while running)
+else if (sessionStorage.getItem('lynko_priv')) { if (stay()) localStorage.setItem('lynko_priv', sessionStorage.getItem('lynko_priv')); resolveReady() }   // same session
+else if (stay() && localStorage.getItem('lynko_priv')) { sessionStorage.setItem('lynko_priv', localStorage.getItem('lynko_priv')); resolveReady() }   // app was closed: reopen without a password
 else show();
 
 // ───────────── lock again after leaving the app ─────────────
@@ -85,9 +87,9 @@ document.addEventListener('visibilitychange', () => {
   if (!h || locked || !localStorage.getItem('lynko_enc')) return;
   const away = Date.now() - h, busy = window.F && F.inCall && F.inCall();
   if (away > 10e3 && chat.open) chat.relock();                            // locked chats close quickly
-  if (away > grace() && Date.now() > (+sessionStorage.getItem('lk_skip') || 0) && !busy) { chat.relock(); show() }
+  if (grace() !== Infinity && away > grace() && Date.now() > (+sessionStorage.getItem('lk_skip') || 0) && !busy) { chat.relock(); show() }
 });
-addEventListener('pagehide', () => { if (sessionStorage.getItem('lk_reload') !== '1') sessionStorage.removeItem('lynko_priv') });   // closing the app forgets the unlocked key (except our own update-reload)
+addEventListener('pagehide', () => { if (!stay() && sessionStorage.getItem('lk_reload') !== '1') sessionStorage.removeItem('lynko_priv') });   // closing the app forgets the unlocked key (except our own update-reload)
 sessionStorage.removeItem('lk_reload');
 
 // ───────────── Locked chats (WhatsApp-style, opened with a SECRET CODE typed in the search bar) ─────────────
@@ -214,5 +216,5 @@ const cover = () => { if (shieldOn() && localStorage.getItem('lynko_enc')) shiel
 document.addEventListener('visibilitychange', () => document.hidden ? cover() : uncover());
 addEventListener('pagehide', cover); addEventListener('pageshow', uncover); addEventListener('focus', uncover);
 
-window.LOCK = { ready, chat, checkPw, askText, shield: { get: shieldOn, set: v => localStorage.setItem('lk_shield', v ? '1' : '0') }, lock: show, setAfter: v => localStorage.setItem('lk_after', v), after: () => localStorage.getItem('lk_after') || 'never' };
+window.LOCK = { ready, chat, checkPw, askText, shield: { get: shieldOn, set: v => localStorage.setItem('lk_shield', v ? '1' : '0') }, lock: show, setAfter: v => { localStorage.setItem('lk_after', v); if (v === 'never') { const p = sessionStorage.getItem('lynko_priv'); if (p) localStorage.setItem('lynko_priv', p) } else localStorage.removeItem('lynko_priv') }, after: () => localStorage.getItem('lk_after') || 'never' };
 })();
