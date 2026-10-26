@@ -77,7 +77,11 @@ input:focus{border-color:var(--rose)}
 .me .b{background:linear-gradient(135deg,#d8366f,#8d3bd6);border-top-right-radius:4px}
 .tx{white-space:pre-wrap}
 .meta{float:right;margin:6px 0 -2px 10px;font-size:11px;opacity:.75;display:flex;gap:4px;align-items:center}
-.tk.rd{color:#7fe3ff;opacity:1}
+.tk{display:inline-flex;align-items:center;line-height:0;color:rgba(255,255,255,.7);transition:color .25s}
+.tk svg{width:18px;height:11px;fill:none;stroke:currentColor;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.tk.p svg{width:12px;height:12px;stroke-width:1.5}
+.tk.rd{color:#53d8ff}
+.pv .tk{margin-right:4px;vertical-align:-1px;color:var(--mut)}.pv .tk.rd{color:#53bdeb}
 .b.med{padding:3px 3px 5px}.b.med .tx{padding:5px 7px 0}.b.med .meta{margin-right:6px}
 .b.jumbo{background:none!important;padding:0;font-size:48px;line-height:1.15}.jumbo .meta{font-size:11px}
 .rxp{position:absolute;bottom:-13px;right:8px;background:#2a0f22;border:1px solid var(--line);border-radius:99px;padding:1px 7px;font-size:13px}
@@ -468,7 +472,8 @@ function renderList(){
     b.querySelector('b').textContent=c.username;if(c.bot)b.querySelector('b').insertAdjacentHTML('beforeend','<i class="tag">BOT</i>');
     const pv=b.querySelector('.pv');
     if(typingT[c.id]){pv.textContent='typing…';pv.classList.add('ty')}
-    else pv.textContent=locked?'🔒 Locked chat':ch?((ch.m.from==me.id?(ch.m.r?'✓✓ ':'✓ '):'')+ch.txt):(c.about||'Say hi ♥');
+    else pv.textContent=locked?'🔒 Locked chat':ch?(ch.txt):(c.about||'Say hi ♥');
+    if(!typingT[c.id]&&!locked&&ch&&ch.m.from==me.id)pv.insertAdjacentHTML('afterbegin',tkHtml(ch.m));
     if(ch){const t=new Date(ch.m.ts);b.querySelector('time').textContent=t.toDateString()==new Date().toDateString()?hm(ch.m.ts):dayLbl(ch.m.ts);
       if(ch.unread){b.querySelector('.badge').textContent=ch.unread>99?'99+':ch.unread}}
     b.onclick=()=>openChat(c.id);l.appendChild(b);
@@ -490,7 +495,7 @@ function reconcile(list){   // server list is the truth: refresh ticks / reactio
   const ids=new Set(list.map(m=>m.id));
   for(let i=msgs.length-1;i>=0;i--){const m=msgs[i];if(!m.pending&&!ids.has(m.id)){msgs.splice(i,1);$('m'+m.id)?.remove();seen.delete(m.id)}}
   for(const m of list){if(!seen.has(m.id))continue;const o=msgs.find(x=>x.id==m.id);if(!o)continue;
-    if(m.r&&!o.r){o.r=true;tickEl($('m'+o.id))}o.rx=m.rx||{};rxEl($('m'+o.id))}
+    if((m.r&&!o.r)||(m.d&&!o.d)){o.r=o.r||m.r;o.d=o.d||m.d;tickEl($('m'+o.id))}o.rx=m.rx||{};rxEl($('m'+o.id))}
   paintBatch(list.filter(m=>!seen.has(m.id)));
   mcache.set(cur,msgs.filter(m=>!m.pending))}
 async function openChat(id){
@@ -522,7 +527,22 @@ function markRead(){
 // ── messages ──
 const scrollEnd=()=>{const b=$('msgs');b.scrollTop=b.scrollHeight};
 const io=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target._load?.();io.unobserve(e.target)}}),{rootMargin:'300px'});
-function tickEl(r){const t=r?.querySelector('.tk');if(!t)return;const m=r._m;t.textContent=m.pending?'🕓':m.r?'✓✓':'✓';t.className='tk'+(m.r?' rd':'')}
+// WhatsApp ticks: clock = sending · ✓ sent · ✓✓ grey = delivered to their phone · ✓✓ blue = seen
+const TK={p:'<svg viewBox="0 0 12 12"><circle cx="6" cy="6" r="4.8"/><path d="M6 3.4V6l1.8 1.1"/></svg>',
+  s:'<svg viewBox="0 0 18 11"><path d="M1 5.8 4.2 9 10.2 2"/></svg>',
+  d:'<svg viewBox="0 0 18 11"><path d="M1 5.8 4.2 9 10.2 2M6.6 8.2 7.6 9 13.8 2"/></svg>'};
+const tkState=m=>m.pending?'p':m.r?'r':m.d?'d':'s';
+const tkHtml=m=>{const k=tkState(m);return `<i class="tk ${k}${k=='r'?' rd':''}">${TK[k=='r'?'d':k]}</i>`};
+function tickEl(r){const t=r?.querySelector('.tk');if(!t)return;const m=r._m,k=tkState(m);if(t.dataset.k==k)return;t.dataset.k=k;t.innerHTML=TK[k=='r'?'d':k];t.className='tk '+k+(k=='r'?' rd':'')}
+let dlvQ=new Set(),dlvT=0;
+function ackDlv(id){if(!id)return;dlvQ.add(id);clearTimeout(dlvT);dlvT=setTimeout(()=>{const ids=[...dlvQ];dlvQ=new Set();api('/api/delivered','POST',{ids}).catch(()=>{})},120)}
+const ackAll=()=>api('/api/delivered','POST',{}).catch(()=>{});
+const dlvSeen=new Set();   // delivered-acks that arrived before the send call itself returned
+function setDlv(ids,by){
+  ids.forEach(id=>dlvSeen.add(id));if(dlvSeen.size>500)dlvSeen.clear();
+  msgs.forEach(m=>{if(m.from==me.id&&!m.pending&&!m.d&&ids.includes(m.id)){m.d=true;tickEl($('m'+m.id))}});
+  mcache.forEach(a=>a.forEach(m=>{if(ids.includes(m.id))m.d=true}));
+  const c=chats.get(by);if(c&&c.m.from==me.id&&ids.includes(c.m.id)){c.m.d=true;renderList()}}
 function rxEl(r){if(!r)return;const e=Object.values(r._m.rx||{}),s=r.querySelector('.rxp');s.textContent=e.length?[...new Set(e)].join('')+(e.length>1?' '+e.length:''):'';s.hidden=!e.length}
 function press(b,fn){let t;const c=()=>clearTimeout(t);
   b.addEventListener('pointerdown',()=>{b._lp=0;t=setTimeout(()=>{b._lp=1;navigator.vibrate?.(15);fn()},420)});
@@ -635,7 +655,7 @@ async function deliver(kind,p,bytes,local,to){
     const real=await api('/api/messages','POST',body),el=$('m'+m.id);
     pl.set(real.id,p);if(urls[m.id])urls[real.id]=urls[m.id];
     if(seen.has(real.id)){el?.remove();drop()}
-    else{seen.add(real.id);Object.assign(m,real);m.pending=false;if(el){el.id='m'+real.id;tickEl(el)}}
+    else{seen.add(real.id);Object.assign(m,real);m.pending=false;if(dlvSeen.has(real.id))m.d=true;if(el){el.id='m'+real.id;tickEl(el)}}
     cacheMsg(peer,m);setLast(peer,real,0).then(renderList);
   }catch(e){$('m'+m.id)?.remove();drop();seen.delete(m.id);toast('Not sent: '+e.message)}
 }
@@ -914,18 +934,20 @@ $('hmenu').onclick=()=>cur=='ai'?items([['🖼 Wallpaper',wallpaper],['🧹 Clea
 document.addEventListener('visibilitychange',()=>{
   if(document.hidden)recCancel();
   if(document.hidden&&cur&&LOCK.chat.has(cur)){closeChat()}
-  else if(!document.hidden&&cur){pull().catch(()=>{})}});
+  else if(!document.hidden&&cur){pull().catch(()=>{})}
+  if(!document.hidden&&me)ackAll()});
 
 // ── start ──
 (async()=>{
   await LOCK.ready;const pj=sessionStorage.getItem('lynko_priv');if(!pj)return leave();
   let cfg;try{[me,cfg]=await Promise.all([api('/api/me'),api('/api/config')])}catch{return}
   priv=await crypto.subtle.importKey('jwk',JSON.parse(pj),{name:'ECDH',namedCurve:'P-256'},false,['deriveKey']);
-  contacts=new Map(me.contacts.map(c=>[c.id,nick(c)]));paintMe();applyWp();try{renderList()}catch(e){console.error(e)}warmBanners();loadChats().catch(()=>{});loadStatuses().catch(()=>{});loadOfficial().catch(()=>{});
+  contacts=new Map(me.contacts.map(c=>[c.id,nick(c)]));paintMe();applyWp();try{renderList()}catch(e){console.error(e)}warmBanners();loadChats().catch(()=>{}).then(ackAll);loadStatuses().catch(()=>{});loadOfficial().catch(()=>{});
   if(typeof Pusher==='undefined')await new Promise(r=>{const e=$('pjs');if(!e)return r();e.addEventListener('load',r);e.addEventListener('error',r);setTimeout(r,5000)});
   if(typeof Pusher==='undefined')return;   // offline: show saved chats only
   const ps=new Pusher(cfg.key,{cluster:cfg.cluster,channelAuthorization:{endpoint:'/api/pusher/auth'}}),ch=ps.subscribe('private-u-'+me.id);
   ch.bind('msg',async d=>{
+    if(d.from!=me.id)ackDlv(d.id);   // our phone has it -> sender's tick turns into ✓✓
     if(d.from==me.id&&d.tmp&&seen.has(d.tmp))return;   // the send call finishes that bubble itself
     const peer=d.from==me.id?d.to:d.from;
     if(!contacts.has(peer)){await loadContacts();keys={}}
@@ -936,7 +958,8 @@ document.addEventListener('visibilitychange',()=>{
     else if(d.from!=me.id&&peer!=cur)navigator.vibrate?.(20);
     if(!live&&d.from!=me.id)F.notify(peer,d);renderList()});
   ch.bind('del',d=>{const i=msgs.findIndex(m=>m.id==d.id);if(i>-1)msgs.splice(i,1);$('m'+d.id)?.remove();mcache.forEach((a,k)=>mcache.set(k,a.filter(m=>m.id!=d.id)));loadChats().catch(()=>{})});
-  ch.bind('read',d=>{msgs.forEach(m=>{if(m.from==me.id&&m.to==d.by&&!m.r){m.r=true;tickEl($('m'+m.id))}});const c=chats.get(d.by);if(c&&c.m.from==me.id)c.m.r=true;renderList()});
+  ch.bind('read',d=>{msgs.forEach(m=>{if(m.from==me.id&&m.to==d.by&&!m.pending&&!m.r){m.r=m.d=true;tickEl($('m'+m.id))}});mcache.forEach(a=>a.forEach(m=>{if(m.from==me.id&&m.to==d.by&&!m.pending)m.r=m.d=true}));const c=chats.get(d.by);if(c&&c.m.from==me.id)c.m.r=c.m.d=true;renderList()});
+  ch.bind('dlv',d=>setDlv(d.ids||[],d.by));
   ch.bind('rx',d=>{setRx(d.id,d.rx);if(d.by!=me.id&&d.rx[d.by]=='❤️'){const r=$('m'+d.id)?.getBoundingClientRect();if(r)burst(r.left+r.width/2,r.top)}});
   ch.bind('typing',F.typingEvent);
   const oc=ps.subscribe('official');
@@ -945,7 +968,7 @@ document.addEventListener('visibilitychange',()=>{
   oc.bind('odel',()=>loadOfficial().catch(()=>{}));
   for(const ev of ['status','sview','sdel'])ch.bind(ev,()=>loadStatuses().catch(()=>{}));
   ch.bind('prof',()=>loadContacts().then(()=>{if(cur)setSub()}).catch(()=>{}));
-  let first=1;ps.connection.bind('connected',()=>{if(first){first=0;return}if(cur)pull();loadChats().catch(()=>{});loadStatuses().catch(()=>{});loadOfficial().catch(()=>{})});
+  let first=1;ps.connection.bind('connected',()=>{if(first){first=0;return}if(cur)pull();loadChats().catch(()=>{}).then(ackAll);loadStatuses().catch(()=>{});loadOfficial().catch(()=>{})});
   F.init({ps,ch,cfg});
 })();
 </script>
