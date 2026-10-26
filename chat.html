@@ -851,7 +851,7 @@ function setHtml(){
       +sSw('👁','#34c759','Hide last seen &amp; online','seen',{on:!!me.hideSeen,sub:'If hidden, you can’t see others’ either'})
       +`<label class="sr"><span class="si" style="background:#ff9f0a">⏱</span><span class="st">Lock app</span><select data-k="after"><option value="never">Never</option><option value="now">Right away</option><option value="1m">After 1 minute</option><option value="10m">After 10 minutes</option></select></label>`
       +sSw('🫥','#5856d6','Hide app preview','shield',{on:LOCK.shield.get(),sub:'Blank screen in the app switcher'}),
-      'Your password is asked again whenever you come back to the app.')
+      'Never = the app opens straight away. Pick a time to ask your password again after you leave the app.')
     +(rs===true?sGrp(sSw('🛡','#0a84ff','Protect IP address in calls','relay',{on:F.relayGet(),sub:'Relays calls through Lynko so your IP stays hidden'}),CALLNOTE):`<div class="sf">${CALLNOTE}</div>`)   // row only appears when the server really has a relay (no more \"not available\" error text)
     +(isInstalled()?'':sGrp(sRow('📲','#0a84ff','Install app',{a:'install',sub:'Add LYNKO CHAT to your home screen — opens like a normal app'})))
     +sGrp(sRow('🔔','#ff3b30','Notifications',{a:'notif',val:nv})
