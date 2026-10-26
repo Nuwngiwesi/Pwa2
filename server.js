@@ -72,7 +72,7 @@ const limited = ip => { const n = (tries.get(ip) || 0) + 1; tries.set(ip, n); se
 const chan = id => 'private-u-' + id;
 const conv = (a, b) => [a, b].sort().join(':');
 const fire = (ids, ev, data) => { if (ids.length) pusher.trigger(ids.map(chan), ev, data).catch(() => {}); };
-const PUB = { _id: 0, id: 1, username: 1, pub: 1, about: 1, dpv: 1, bnv: 1 };
+const PUB = { _id: 0, id: 1, username: 1, pub: 1, about: 1, dpv: 1, bnv: 1, bot: 1, handle: 1 };
 // phone numbers: digits only, local "0xxxxxxxxx" -> DEFAULT_CC + rest. The browser applies the same rule (cc comes from /api/config).
 const CC = String(process.env.DEFAULT_CC || '94').replace(/\D/g, '');
 const normPhone = raw => { let d = String(raw || '').replace(/\D/g, ''); if (d.startsWith('00')) d = d.slice(2); else if (d.startsWith('0')) d = CC + d.slice(1); return /^\d{8,15}$/.test(d) ? d : null; };
@@ -174,7 +174,7 @@ app.post('/api/login', async (req, res) => {
   const key = 'a:' + (b.phone ? normPhone(b.phone) || 'x' : String(b.username || '').toLowerCase().slice(0, 40));
   if (acctLocked(key)) return res.status(429).json({ error: 'Too many wrong tries for this account. Wait 15 minutes.' });
   if (b.phone) { const ph = normPhone(b.phone); if (ph) u = await U.findOne({ phone: ph }); }
-  else if (b.username) u = await U.findOne({ username: String(b.username).toLowerCase(), phone: { $exists: false } });   // accounts made before number login
+  else if (b.username) u = await U.findOne({ username: String(b.username).toLowerCase(), phone: { $exists: false }, bot: { $ne: true } });   // accounts made before number login
   const okPw = await bcrypt.compare(String(b.auth || ''), u ? u.hash : DUMMY_HASH);
   if (!u || !okPw) { acctFail(key); mon.count('loginFail'); return res.status(401).json({ error: 'Wrong number or password' }); }
   acctOk(key); mon.count('login'); give(res, u); res.json({ id: u.id, username: u.username, pub: u.pub, encPriv: u.encPriv });
@@ -190,6 +190,8 @@ app.get('/api/me', auth, async (req, res) => {
 app.post('/api/contacts', auth, async (req, res) => {
   const raw = String(req.body.id || '').trim();
   let p = /^\d{8}$/.test(raw) ? await U.findOne({ id: raw }, { projection: PUB }) : null;
+  const hd = raw.replace(/^@/, '').toLowerCase();
+  if (!p && /^[a-z][a-z0-9_]{4,31}$/.test(hd)) p = await U.findOne({ handle: hd, bot: true }, { projection: PUB });   // bots are found by their @username
   if (!p) { const ph = normPhone(raw); if (ph) p = await U.findOne({ phone: ph }, { projection: PUB }); }
   if (!p || p.id === req.u.id) return res.status(404).json({ error: 'No user with that number or ID' });
   await Promise.all([U.updateOne({ id: req.u.id }, { $addToSet: { contacts: p.id } }), U.updateOne({ id: p.id }, { $addToSet: { contacts: req.u.id } })]);
@@ -253,8 +255,8 @@ app.get('/api/chats', auth, async (req, res) => {   // last message + unread per
 });
 app.get('/api/messages', auth, async (req, res) => {
   const q = { conv: conv(req.u.id, String(req.query.with)) };
-  if (req.query.after) q.createdAt = { $gt: new Date(req.query.after) };
-  res.json((await M.find(q).sort({ createdAt: 1 }).limit(300).toArray()).map(out));
+  if (req.query.after) { q.createdAt = { $gt: new Date(req.query.after) }; return res.json((await M.find(q).sort({ createdAt: 1 }).limit(300).toArray()).map(out)); }
+  res.json((await M.find(q).sort({ createdAt: -1 }).limit(100).toArray()).reverse().map(out));   // newest 100 only: far less data
 });
 // raw encrypted bytes straight to the bucket (no base64, no Mongo)
 app.post('/api/media', auth, express.raw({ type: 'application/octet-stream', limit: '20mb' }), async (req, res) => {
@@ -280,7 +282,7 @@ app.post('/api/messages', auth, async (req, res) => {
   if (typeof tmp === 'string' && /^t[\w]{3,24}$/.test(tmp)) m.tmp = tmp;   // lets the sender's own phone match this event to its pending bubble
   const small = m.ct.length < 6000, evt = small ? m : { id: m.id, from: m.from, to: m.to };
   // small messages (all text) are pushed to the receiver IMMEDIATELY, in parallel with the database write
-  if (small) fire([me, to], 'msg', evt);
+  if (small) fire(bots.isBot(to) ? [me] : [me, to], 'msg', evt);
   try {
     await Promise.all([M.insertOne(doc), ...(known ? [] : [U.updateOne({ id: me }, { $addToSet: { contacts: to } }), U.updateOne({ id: to }, { $addToSet: { contacts: me } })])]);
   } catch (e) {
@@ -289,8 +291,9 @@ app.post('/api/messages', auth, async (req, res) => {
   }
   if (!known) { if (linked.size > 1e5) linked.clear(); linked.add(pair); }
   mon.count('msg');
+  if (bots.isBot(to)) bots.incoming({ from: me, to, kind, iv, ct, id: m.id, ts: now, name: req.u.u }).catch(e => mon.logError('bot', e));   // bots read it server-side; no push / no extra realtime event
   if (!small) fire([me, to], 'msg', evt);   // big (media) events carry no ciphertext: receivers fetch it, so only announce after it is saved
-  push(to, { type: 'msg', title: req.u.u, body: kind === 'text' ? 'New message' : kind === 'img' ? '📷 Photo' : kind === 'aud' ? '🎤 Voice message' : '🎥 Video', tag: 'm' + me, from: me });
+  if (!bots.isBot(to)) push(to, { type: 'msg', title: req.u.u, body: kind === 'text' ? 'New message' : kind === 'img' ? '📷 Photo' : kind === 'aud' ? '🎤 Voice message' : '🎥 Video', tag: 'm' + me, from: me });
   res.json(m);
 });
 app.get('/api/blob/:id', auth, async (req, res) => {
@@ -312,7 +315,7 @@ app.post('/api/read', auth, async (req, res) => {
   if (r.modifiedCount) fire([w], 'read', { by: req.u.id });
   res.json({ ok: 1 });
 });
-app.post('/api/typing', auth, (req, res) => { fire([String(req.body.to)], 'typing', { from: req.u.id, stop: !!req.body.stop }); res.status(204).end(); });
+app.post('/api/typing', auth, (req, res) => { if (bots.isBot(req.body.to)) return res.status(204).end(); fire([String(req.body.to)], 'typing', { from: req.u.id, stop: !!req.body.stop }); res.status(204).end(); });
 const EMO = ['❤️', '😍', '🥰', '😘', '😂', '😢', '🔥', '👍'];
 app.post('/api/react', auth, async (req, res) => {
   let m; try { m = await M.findOne({ _id: new ObjectId(req.body.id) }); } catch {}
@@ -335,7 +338,7 @@ app.post('/api/status', auth, async (req, res) => {
   if (!iv || !ct || String(ct).length > 20000 || !keys || typeof keys !== 'object') return res.status(400).json({ error: 'Bad status' });
   const me = await U.findOne({ id: req.u.id }, { projection: { contacts: 1 } });
   const wk = {};
-  for (const id of [...me.contacts, req.u.id]) { const w = keys[id];
+  for (const id of [...me.contacts.filter(c => !bots.isBot(c)), req.u.id]) { const w = keys[id];
     if (w && typeof w.iv === 'string' && typeof w.ct === 'string' && w.ct.length < 400) wk[id] = { iv: w.iv, ct: w.ct }; }
   if (!wk[req.u.id]) return res.status(400).json({ error: 'Bad status' });
   if (await S.countDocuments({ from: req.u.id }) >= 30) return res.status(400).json({ error: 'Too many active statuses (max 30)' });
@@ -387,11 +390,12 @@ app.post('/api/ping', auth, async (req, res) => {
   await U.updateOne({ id: req.u.id }, { $set: { lastSeen: new Date(), on: req.query.off !== '1' } }); res.status(204).end();
 });
 app.get('/api/seen/:id', auth, async (req, res) => {
+  if (bots.isBot(req.params.id)) return res.json({ online: true, ts: null });
   const [p, me] = await Promise.all([U.findOne({ id: req.params.id, contacts: req.u.id }, { projection: { lastSeen: 1, on: 1, hideSeen: 1 } }),
     U.findOne({ id: req.u.id }, { projection: { hideSeen: 1 } })]);
   if (!p) return res.status(404).end();
   if (p.hideSeen || (me && me.hideSeen)) return res.json({ hidden: 1 });   // hide yours = you can't see theirs (like WhatsApp)
-  res.json({ online: !!p.on && !!p.lastSeen && Date.now() - p.lastSeen < 45e3, ts: p.lastSeen ? p.lastSeen.toISOString() : null });
+  res.json({ online: !!p.on && !!p.lastSeen && Date.now() - p.lastSeen < 90e3, ts: p.lastSeen ? p.lastSeen.toISOString() : null });
 });
 
 // ── push subscriptions ──
@@ -449,6 +453,7 @@ app.post('/api/call', auth, async (req, res) => {
     const to = String(req.body.to || '');
     if (typeof sdp !== 'string' || sdp.length > SDPMAX || to === me) return res.status(400).json({ error: 'Bad call' });
     if (callLimited(me)) return res.status(429).json({ error: 'Too many calls. Try again in a minute.' });
+    if (bots.isBot(to)) return res.status(400).json({ error: 'Bots cannot take calls' });
     if (!(await U.findOne({ id: to, contacts: me }, { projection: { _id: 1 } }))) return res.status(404).json({ error: 'User not found' });
     const nowT = Date.now();
     if (await K.findOne({ $and: [{ $or: [{ from: to }, { to }] }, { $or: [{ st: 'ringing', ts: { $gt: new Date(nowT - 60e3) } }, { st: 'active', hb: { $gt: new Date(nowT - 90e3) } }] }] })) return res.json({ busy: 1 });
@@ -583,6 +588,7 @@ app.post('/api/pusher/auth', auth, (req, res) => {
   res.send(pusher.authorizeChannel(socket_id, channel_name));
 });
 
+const bots = require('./bots')({ app, C, seal, unseal, fire, conv, push, ObjectId, log: (k, e) => mon.logError(k, e) });
 app.use((e, q, r, n) => {
   if (!e.type && !(e.status && e.status < 500)) mon.logError('server', e, { path: (q.route && q.route.path) || q.path, method: q.method, user: q.u && q.u.id });
   r.status(e.status || 500).json({ error: e.type === 'entity.too.large' ? 'File too large' : 'Server error' });
@@ -600,6 +606,7 @@ app.use((e, q, r, n) => {
   await M.createIndex({ conv: 1, createdAt: 1 }); await M.createIndex({ createdAt: 1 }, { expireAfterSeconds: 86400 });
   await S.createIndex({ from: 1, createdAt: -1 }); await S.createIndex({ createdAt: 1 }, { expireAfterSeconds: 86400 });
   await U.createIndex({ createdAt: 1 }); await U.createIndex({ lastSeen: 1 });
+  await bots.init();
   await K.createIndex({ cid: 1 }, { unique: true }); await K.createIndex({ from: 1, ts: -1 }); await K.createIndex({ to: 1, ts: -1 }); await K.createIndex({ ts: 1 }, { expireAfterSeconds: 30 * 86400 });
   setInterval(async () => {   // callers that vanished: ringing > 50s = missed; calls "active" > 4h = ended
     try {
