@@ -245,7 +245,7 @@ app.get('/api/banner/:id', auth, imgSend('banner'));
 
 // ── messages (server only sees ciphertext) ──
 const out = m => ({ id: m._id.toString(), from: m.from, to: m.to, kind: m.kind, iv: m.iv, bIv: m.bIv || null,
-  ct: unseal(m.ct).toString('base64'), media: !!m.bkey, r: !!m.r, rx: m.rx || {}, ts: m.createdAt.toISOString() });
+  ct: unseal(m.ct).toString('base64'), media: !!m.bkey, r: !!m.r, d: !!(m.d || m.r), rx: m.rx || {}, ts: m.createdAt.toISOString() });
 
 app.get('/api/chats', auth, async (req, res) => {   // last message + unread per chat
   const me = await U.findOne({ id: req.u.id }, { projection: { contacts: 1 } });
@@ -274,11 +274,12 @@ app.post('/api/messages', auth, async (req, res) => {
   if (!known && !(await U.findOne({ id: to }, { projection: { _id: 1 } }))) return res.status(404).json({ error: 'User not found' });
   const cbuf = Buffer.from(ct, 'base64'), _id = new ObjectId(), now = new Date();
   const doc = { _id, conv: conv(me, to), from: me, to, kind, iv, ct: seal(cbuf), createdAt: now };
+  if (bots.isBot(to)) doc.d = true;   // bots read it server-side: delivered at once
   if (kind !== 'text') {
     if (!mine(me, bkey) || !bIv) return res.status(400).json({ error: 'Missing media' });
     Object.assign(doc, { bkey, bIv: String(bIv) });
   }
-  const m = { id: _id.toString(), from: me, to, kind, iv, bIv: doc.bIv || null, ct: cbuf.toString('base64'), media: !!doc.bkey, r: false, rx: {}, ts: now.toISOString() };
+  const m = { id: _id.toString(), from: me, to, kind, iv, bIv: doc.bIv || null, ct: cbuf.toString('base64'), media: !!doc.bkey, r: false, d: !!doc.d, rx: {}, ts: now.toISOString() };
   if (typeof tmp === 'string' && /^t[\w]{3,24}$/.test(tmp)) m.tmp = tmp;   // lets the sender's own phone match this event to its pending bubble
   const small = m.ct.length < 6000, evt = small ? m : { id: m.id, from: m.from, to: m.to };
   // small messages (all text) are pushed to the receiver IMMEDIATELY, in parallel with the database write
@@ -309,10 +310,30 @@ app.delete('/api/messages/:id', auth, async (req, res) => {
   fire([m.from, m.to], 'del', { id: req.params.id });
   res.json({ ok: 1 });
 });
+// delivered = the receiver's phone has the message (WhatsApp's grey double tick). The receiver's app acks by id when the realtime event
+// arrives, and with no ids (app start / reconnect) acks everything that waited for it while the phone was offline.
+async function markDelivered(me, body, retry) {
+  const q = { to: me, d: { $ne: true } }, want = [];
+  if (Array.isArray(body.ids)) { for (const x of body.ids.slice(0, 200)) { try { want.push(new ObjectId(String(x))); } catch {} } if (!want.length) return; q._id = { $in: want }; }
+  else if (body.with) q.conv = conv(me, String(body.with));
+  const docs = await M.find(q, { projection: { _id: 1, from: 1 } }).toArray();
+  if (docs.length) {
+    await M.updateMany({ _id: { $in: docs.map(x => x._id) }, d: { $ne: true } }, { $set: { d: true } });
+    const by = new Map(); docs.forEach(x => { if (!by.has(x.from)) by.set(x.from, []); by.get(x.from).push(x._id.toString()); });
+    by.forEach((ids, from) => fire([from], 'dlv', { by: me, ids }));
+  }
+  // an ack can beat the database write of a message that was pushed to the receiver early: look once more a moment later
+  if (want.length && !retry && docs.length < want.length) setTimeout(() => markDelivered(me, body, true).catch(() => {}), 1500);
+}
+app.post('/api/delivered', auth, async (req, res) => { await markDelivered(req.u.id, req.body || {}); res.json({ ok: 1 }); });
 app.post('/api/read', auth, async (req, res) => {
   const w = String(req.body.with);
-  const r = await M.updateMany({ conv: conv(req.u.id, w), to: req.u.id, r: { $ne: true } }, { $set: { r: true } });
-  if (r.modifiedCount) fire([w], 'read', { by: req.u.id });
+  const q = { conv: conv(req.u.id, w), to: req.u.id, r: { $ne: true } };
+  const ids = (await M.find(q, { projection: { _id: 1 } }).toArray()).map(x => x._id);
+  if (ids.length) {
+    await M.updateMany({ _id: { $in: ids } }, { $set: { r: true, d: true } });   // seen always implies delivered
+    fire([w], 'read', { by: req.u.id, ids: ids.map(x => x.toString()) });
+  }
   res.json({ ok: 1 });
 });
 app.post('/api/typing', auth, (req, res) => { if (bots.isBot(req.body.to)) return res.status(204).end(); fire([String(req.body.to)], 'typing', { from: req.u.id, stop: !!req.body.stop }); res.status(204).end(); });
@@ -603,7 +624,7 @@ app.use((e, q, r, n) => {
   const phoneIx = { unique: true, partialFilterExpression: { phone: { $type: 'string' } } };
   try { await U.createIndex({ phone: 1 }, phoneIx); }
   catch (e) { if (e.code !== 85 && e.code !== 86) throw e; try { await U.dropIndex('phone_1'); } catch {} await U.createIndex({ phone: 1 }, phoneIx); }   // an older phone index with different options: rebuild it
-  await M.createIndex({ conv: 1, createdAt: 1 }); await M.createIndex({ createdAt: 1 }, { expireAfterSeconds: 86400 });
+  await M.createIndex({ conv: 1, createdAt: 1 }); await M.createIndex({ to: 1, d: 1 }); await M.createIndex({ createdAt: 1 }, { expireAfterSeconds: 86400 });
   await S.createIndex({ from: 1, createdAt: -1 }); await S.createIndex({ createdAt: 1 }, { expireAfterSeconds: 86400 });
   await U.createIndex({ createdAt: 1 }); await U.createIndex({ lastSeen: 1 });
   await bots.init();
